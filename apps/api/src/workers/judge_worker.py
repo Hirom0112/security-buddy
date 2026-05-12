@@ -26,9 +26,11 @@ from uuid import UUID
 from arq.constants import default_queue_name as ARQ_DEFAULT_QUEUE_NAME  # noqa: F401 — re-exported
 
 from src.agents.judge.judge import run_judge
+from src.agents.judge.schema import Verdict
 from src.llm_client.client import LLMClient  # noqa: TC001
 from src.observability.context import set_request_id
 from src.observability.events import log_event
+from src.workers.queue import enqueue_documentation_write
 
 
 async def evaluate_attack(
@@ -67,11 +69,24 @@ async def evaluate_attack(
         )
         await session.commit()
 
+    # Slice 4 handoff: enqueue the Documentation Agent whenever the verdict
+    # is an exploit. Skipped when run_judge short-circuited on an existing
+    # verdict (run_document is idempotent anyway, but we avoid the queue
+    # round-trip when nothing changed).
+    enqueued_doc_job = False
+    if (
+        outcome.skipped_reason is None
+        and outcome.verdict is Verdict.EXPLOIT
+    ):
+        await enqueue_documentation_write(outcome.verdict_id, request_id)
+        enqueued_doc_job = True
+
     result = {
         "attack_id": attack_id,
         "verdict_id": str(outcome.verdict_id),
         "verdict": outcome.verdict.value,
         "skipped_reason": outcome.skipped_reason,
+        "enqueued_documentation_job": enqueued_doc_job,
     }
 
     log_event(
@@ -80,6 +95,7 @@ async def evaluate_attack(
         verdict_id=result["verdict_id"],
         verdict=result["verdict"],
         skipped_reason=outcome.skipped_reason,
+        enqueued_documentation_job=enqueued_doc_job,
         outcome="success",
     )
 

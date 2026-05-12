@@ -70,11 +70,12 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101", "ANN", "PT"]
+"tests/**" = ["S101", "ANN", "PT", "E501", "S105", "S106", "S107"]
 # The eval runner embeds long-form ground-truth manifest strings and shells
 # out to `git rev-parse` for the results filename — both are intentional and
 # scope-narrow to this script.
 "tests/evals/run_judge_eval.py" = ["E501", "S603", "S607"]
+"tests/evals/run_documentation_eval.py" = ["E501", "S603", "S607"]
 
 [tool.mypy]
 python_version = "3.12"

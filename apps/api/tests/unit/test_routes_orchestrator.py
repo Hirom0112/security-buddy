@@ -9,8 +9,8 @@ import hashlib
 import hmac
 import json
 import os
-from decimal import Decimal
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -102,7 +102,7 @@ def test_start_campaign_enqueues_orchestrator_tick(
     assert body["status"] == "pending"
 
     # Created with target_subcategory=None — that's the empty-start contract.
-    args, kwargs = repo.create.call_args
+    _args, kwargs = repo.create.call_args
     assert kwargs["target_subcategory"] is None
 
     mock_enqueue.assert_awaited_once()

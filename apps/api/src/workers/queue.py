@@ -65,6 +65,27 @@ async def enqueue_orchestrator_tick(campaign_id: UUID, request_id: str) -> None:
         await redis.close()
 
 
+async def enqueue_documentation_write(verdict_id: UUID, request_id: str) -> None:
+    """Push a documentation.write job onto the arq Redis queue.
+
+    Slice 4 handoff: the Judge worker enqueues this whenever a verdict row
+    is written with verdict='exploit'. _job_id is f"doc:{verdict_id}" so
+    concurrent enqueues for the same verdict collapse to a single job
+    (defence on top of run_document's existing-vuln short-circuit).
+    """
+    settings = get_settings()
+    redis = await create_pool(RedisSettings.from_dsn(settings.redis_url))
+    try:
+        await redis.enqueue_job(
+            "write_documentation",
+            str(verdict_id),
+            request_id,
+            _job_id=f"doc:{verdict_id}",
+        )
+    finally:
+        await redis.close()
+
+
 async def enqueue_judge_evaluate(attack_id: UUID, request_id: str) -> None:
     """Push a judge.evaluate job onto the arq Redis queue.
 

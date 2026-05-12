@@ -36,6 +36,7 @@ from src.llm_client.client import LLMClient
 from src.observability.context import set_request_id
 from src.observability.events import log_event
 from src.settings import get_settings
+from src.workers.documentation_worker import write_documentation
 from src.workers.judge_worker import evaluate_attack
 from src.workers.orchestrator_worker import orchestrator_tick
 from src.workers.queue import enqueue_judge_evaluate
@@ -160,6 +161,7 @@ class WorkerSettings:
         execute_red_team,
         evaluate_attack,
         orchestrator_tick,
+        write_documentation,
     ]
     max_tries: ClassVar[int] = 3
     keep_result: ClassVar[int] = 300  # 5-minute job deduplication window
