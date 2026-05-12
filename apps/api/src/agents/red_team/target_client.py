@@ -287,7 +287,7 @@ class TargetClient:
             )
 
         # Capture every cookie the server set on this response.
-        session_cookies = {name: value for name, value in resp.cookies.items()}
+        session_cookies = dict(resp.cookies.items())
 
         if not session_cookies:
             log_event(
