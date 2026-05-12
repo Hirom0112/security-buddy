@@ -1,0 +1,26 @@
+_DS_Store
+.DS_Store
+# Secrets — never commit. Use .env.example with placeholder values only.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+credentials.json
+.langsmith
+.openrouter
+*.pyc
+__pycache__/
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+node_modules/
+.next/
+dist/
+build/
+*.log
+.vscode/
+.idea/
