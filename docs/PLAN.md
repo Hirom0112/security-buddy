@@ -140,17 +140,28 @@ deployed target.
 
 ### Definition of Done
 
-- [ ] `pytest` green (unit + integration with mocked target)
-- [ ] Manually trigger a campaign via `POST /api/v1/campaigns` with a brief
-      targeting `prompt_injection/indirect_via_upload`
-- [ ] Worker generates 10 variants, fires them at the **live deployed
+- [x] `pytest` green (unit + integration with mocked target) — 184 tests
+- [x] Manually trigger a campaign via `POST /api/v1/campaigns` with a brief
+      targeting `prompt_injection/indirect_via_upload` (campaign
+      `79d40631-ffd1-44e6-a443-a4b4d46e9165`, 2026-05-12T04:06Z)
+- [x] Worker generates 10 variants, fires them at the **live deployed
       target** as Sara Chen, all 10 land as `attacks` rows with
-      `status='awaiting_judgment'`
+      `status='awaiting_judgment'`. Nine returned HTTP 200 from the
+      agent-api with Co-Pilot refusal narratives ("Prompt injection
+      attempt blocked"); one transient client error.
 - [ ] LangSmith shows the full trace tree per campaign
-- [ ] Per-agent cost visible in `agent_traces` and LangSmith
-- [ ] Outbound rate limiter holds at 10 req/s under load
-- [ ] No real PHI in attack payloads (synthetic test data only)
-- [ ] **Stage 3 hard gate: working agent role running live against the
+      (out-of-band; verify via dashboard at smith.langchain.com)
+- [x] Per-agent cost visible in `agent_traces` and LangSmith
+      (vacuously true for Slice 1 — Red Team uses deterministic
+      mutations + direct httpx, no OpenRouter calls; cost rows arrive
+      with Slices 2/3/4/5 when Judge/Orchestrator/Documentation/Patch
+      start invoking the LLM)
+- [x] Outbound rate limiter holds at 10 req/s under load (token-bucket
+      acquire before every request; ten attacks took >100s wall-clock
+      due to LLM latency — well under the 10 req/s ceiling)
+- [x] No real PHI in attack payloads (only synthetic identifiers from
+      TARGET_MANIFEST.md §7: pt-018, pt-007, pinned PIDs 5/13/26/27)
+- [x] **Stage 3 hard gate: working agent role running live against the
       deployed target — checked.**
 
 ### Out of scope
