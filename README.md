@@ -23,6 +23,7 @@ submission.
 | **Threat Model** (~500 word summary + full taxonomy) | [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) |
 | **User Doc** (personas, workflows, automation justification) | [`docs/USERS.md`](docs/USERS.md) |
 | **Architecture Doc** (~500 word summary + diagram + agents + regression harness + observability + tradeoffs) | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
+| **Target Manifest** (the target's contract — endpoints, auth, trust boundaries, expected safe behaviors; consumed by Red Team and Judge) | [`docs/TARGET_MANIFEST.md`](docs/TARGET_MANIFEST.md) |
 | **Demo Video** (3–5 min, live attacks against the target) | *(in progress — Slice 8)* — link will appear here |
 | **Eval Dataset** (≥3 attack categories, reproducible) | `evals/` *(in progress — Slice 2 seeds ground truth, Slice 8 finalizes)* |
 | **Vulnerability Reports** (≥3, professional format) | `docs/findings/` *(in progress — Slice 4 produces, Slice 8 curates)* |
