@@ -188,6 +188,48 @@ class AttackRepository:
             raise NotFoundError(f"Attack {attack_id} not found")
         return existing
 
+    async def mark_judged(
+        self,
+        session: AsyncSession,
+        *,
+        attack_id: UUID,
+    ) -> Attack:
+        """Transition attack to status='judged'.
+
+        Idempotent: if already judged, returns the existing row. If not in
+        status='awaiting_judgment', raises NotFoundError (we do not silently
+        flip pending or target_unavailable attacks into judged).
+        """
+        result = await session.execute(
+            sa.text(
+                "UPDATE attacks"
+                " SET status = 'judged'"
+                " WHERE id = :id AND status = 'awaiting_judgment'"
+                " RETURNING id, campaign_id, brief_id, category, subcategory,"
+                "   mutation_strategy, seed_used, attack_input, attack_metadata,"
+                "   target_response, target_response_status,"
+                "   target_response_time_ms, status, created_at, executed_at"
+            ),
+            {"id": str(attack_id)},
+        )
+        row = result.mappings().first()
+        if row is not None:
+            return Attack.model_validate(dict(row))
+
+        # No row updated — either already judged, or wrong state, or missing.
+        existing = await self._get_by_id(session, attack_id)
+        if existing is None:
+            raise NotFoundError(f"Attack {attack_id} not found")
+        return existing
+
+    async def get_by_id(
+        self,
+        session: AsyncSession,
+        attack_id: UUID,
+    ) -> Attack | None:
+        """Public read-by-id. Returns None if missing."""
+        return await self._get_by_id(session, attack_id)
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------

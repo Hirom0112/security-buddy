@@ -41,3 +41,27 @@ async def enqueue_red_team_execute(brief_id: UUID, request_id: str) -> None:
         )
     finally:
         await redis.close()
+
+
+async def enqueue_judge_evaluate(attack_id: UUID, request_id: str) -> None:
+    """Push a judge.evaluate job onto the arq Redis queue.
+
+    Slice 2 handoff: the Red Team executor enqueues one of these per attack
+    transitioned to awaiting_judgment. The Judge worker picks them up, calls
+    the LLM, writes a verdict, and flips the attack to judged.
+
+    The arq job's _job_id is set to f"judge:{attack_id}" so concurrent
+    enqueues for the same attack collapse to a single job (an extra defense
+    against double-judging on top of the DB unique constraint).
+    """
+    settings = get_settings()
+    redis = await create_pool(RedisSettings.from_dsn(settings.redis_url))
+    try:
+        await redis.enqueue_job(
+            "evaluate_attack",
+            str(attack_id),
+            request_id,
+            _job_id=f"judge:{attack_id}",
+        )
+    finally:
+        await redis.close()

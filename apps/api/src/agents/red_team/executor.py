@@ -158,6 +158,7 @@ async def run_executor(
     # Step 4: Execute variants against the target.
     # ------------------------------------------------------------------
     completed_count = 0
+    awaiting_judgment_ids: list[str] = []
     halted_reason: str | None = None
 
     async with TargetClient(settings, rate_limiter) as client:
@@ -283,6 +284,7 @@ async def run_executor(
                     )
                     await session.commit()
                 completed_count += 1
+                awaiting_judgment_ids.append(str(attack.id))
 
     # ------------------------------------------------------------------
     # Step 5: Mark brief and campaign completed (unless halted).
@@ -319,4 +321,5 @@ async def run_executor(
     return {
         "completed_attack_count": completed_count,
         "halted_reason": halted_reason,
+        "awaiting_judgment_attack_ids": awaiting_judgment_ids,
     }

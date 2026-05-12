@@ -32,9 +32,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from src.agents.red_team.executor import run_executor
 from src.agents.red_team.rate_limit import RateLimiter
+from src.llm_client.client import LLMClient
 from src.observability.context import set_request_id
 from src.observability.events import log_event
 from src.settings import get_settings
+from src.workers.judge_worker import evaluate_attack
+from src.workers.queue import enqueue_judge_evaluate
 
 logger = logging.getLogger("security_buddy.workers")
 
@@ -80,11 +83,24 @@ async def execute_red_team(ctx: dict[str, Any], brief_id: str, request_id: str) 
         rate_limiter=rate_limiter,
     )
 
+    # Slice 2 handoff: fan out one judge.evaluate job per attack that landed
+    # in awaiting_judgment. Done here (not inside the executor) to keep
+    # agents/red_team a leaf with no dependency on src.workers.
+    awaiting_ids = result.get("awaiting_judgment_attack_ids") or []
+    enqueued_judge_jobs = 0
+    if isinstance(awaiting_ids, list):
+        for raw_id in awaiting_ids:
+            if not isinstance(raw_id, str):
+                continue
+            await enqueue_judge_evaluate(UUID(raw_id), request_id)
+            enqueued_judge_jobs += 1
+
     log_event(
         "red_team_job_finished",
         brief_id=brief_id,
         completed_attack_count=result.get("completed_attack_count"),
         halted_reason=result.get("halted_reason"),
+        enqueued_judge_jobs=enqueued_judge_jobs,
         outcome="success",
     )
 
@@ -109,10 +125,12 @@ async def startup(ctx: dict[str, Any]) -> None:
         expire_on_commit=False,
     )
     rate_limiter = RateLimiter()
+    llm_client = LLMClient(settings)
 
     ctx["engine"] = engine
     ctx["session_factory"] = factory
     ctx["rate_limiter"] = rate_limiter
+    ctx["llm_client"] = llm_client
 
     log_event("red_team_worker_startup", outcome="success")
 
@@ -133,7 +151,11 @@ async def shutdown(ctx: dict[str, Any]) -> None:
 class WorkerSettings:
     """arq worker configuration consumed by: arq src.workers.red_team_worker.WorkerSettings"""
 
-    functions: ClassVar[list[Any]] = [execute_red_team]
+    # evaluate_attack overrides max_tries to 1 at job-call time (set via
+    # _max_tries in queue.py is also possible, but we keep this single-process
+    # WorkerSettings simple — the Judge job is idempotent at the run_judge
+    # layer regardless, so a retry would no-op).
+    functions: ClassVar[list[Any]] = [execute_red_team, evaluate_attack]
     max_tries: ClassVar[int] = 3
     keep_result: ClassVar[int] = 300  # 5-minute job deduplication window
     on_startup: ClassVar[Any] = startup
