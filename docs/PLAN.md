@@ -83,7 +83,8 @@ the substrate every later slice depends on.
 - [x] `pnpm dev` serves the placeholder dashboard, login gate works
 - [x] `uvicorn src.main:app` serves `/healthz` returning all green
       (app/db/redis = ok; langsmith = unconfigured until key provided)
-- [ ] CI passes on a fresh branch (workflow committed; first run on push)
+- [x] CI passes on a fresh branch (workflow run 25710608370 green —
+      API + UI jobs both clean on the f4cc175 commit)
 - [ ] Both services deployed to Railway as a single project with two
       services (api + ui). URLs documented in README.
       (Railway project provisioned; service deploy deferred — needs
