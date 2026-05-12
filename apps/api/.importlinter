@@ -1,0 +1,44 @@
+[importlinter]
+root_package = src
+
+[importlinter:contract:domain-leaf]
+name = domain is a leaf
+type = forbidden
+source_modules =
+    src.domain
+forbidden_modules =
+    src.agents
+    src.repositories
+    src.routes
+    src.workers
+    src.llm_client
+
+[importlinter:contract:llm-client-leaf]
+name = llm_client is a leaf
+type = forbidden
+source_modules =
+    src.llm_client
+forbidden_modules =
+    src.agents
+    src.repositories
+
+[importlinter:contract:agents-mutually-independent]
+name = agents packages are mutually independent
+type = independence
+modules =
+    src.agents.orchestrator
+    src.agents.red_team
+    src.agents.judge
+    src.agents.documentation
+    src.agents.patch
+
+[importlinter:contract:repositories-domain-only]
+name = repositories imports domain only
+type = forbidden
+source_modules =
+    src.repositories
+forbidden_modules =
+    src.agents
+    src.llm_client
+    src.routes
+    src.workers
