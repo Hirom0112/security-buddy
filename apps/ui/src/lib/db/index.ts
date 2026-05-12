@@ -1,13 +1,41 @@
-// Slice 0: porsager/postgres client factory — stubbed.
-// The client is installed as a dependency and will be wired to DATABASE_URL
-// in Slice 7 when the dashboard reads live data from Postgres.
+// porsager/postgres client for server components.
 //
-// TODO(slice-7): instantiate postgres(env.DATABASE_URL) here and export the
-// sql tag for use in server components.
+// Slice 7 wiring: reads from DATABASE_URL (same Postgres the API uses).
+// Server components import { sql } and run typed queries directly — no
+// API round-trip for reads. Mutations still go through the FastAPI
+// /api/v1/* routes.
+//
+// The client is constructed lazily on first call so that:
+//   - test environments without DATABASE_URL set don't crash on import,
+//   - `next build` doesn't try to dial the DB at build time.
+//
+// SQLAlchemy uses postgresql+asyncpg:// — the postgres driver wants
+// plain postgresql://. Strip the suffix here so one DATABASE_URL works
+// for both API and UI.
 
-export type { Sql } from "postgres";
+import postgres, { type Sql } from "postgres";
 
-// Placeholder — returns undefined so server components can detect Slice 0 stub.
-export function getDb(): undefined {
-  return undefined;
+export type { Sql };
+
+let _sql: Sql | undefined;
+
+function dsn(): string {
+  const raw = process.env["DATABASE_URL"];
+  if (raw === undefined || raw === "") {
+    throw new Error(
+      "DATABASE_URL is not set — server components cannot read the database."
+    );
+  }
+  return raw.replace(/^postgresql\+asyncpg:\/\//, "postgresql://");
+}
+
+export function getSql(): Sql {
+  if (_sql === undefined) {
+    _sql = postgres(dsn(), {
+      max: 5,
+      idle_timeout: 30,
+      prepare: false,
+    });
+  }
+  return _sql;
 }

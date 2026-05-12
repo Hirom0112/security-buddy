@@ -37,8 +37,10 @@ from src.observability.context import set_request_id
 from src.observability.events import log_event
 from src.settings import get_settings
 from src.workers.documentation_worker import write_documentation
+from src.workers.harness_worker import run_regression_sweep
 from src.workers.judge_worker import evaluate_attack
 from src.workers.orchestrator_worker import orchestrator_tick
+from src.workers.patch_worker import propose_patch
 from src.workers.queue import enqueue_judge_evaluate
 
 logger = logging.getLogger("security_buddy.workers")
@@ -133,6 +135,7 @@ async def startup(ctx: dict[str, Any]) -> None:
     ctx["session_factory"] = factory
     ctx["rate_limiter"] = rate_limiter
     ctx["llm_client"] = llm_client
+    ctx["settings"] = settings
 
     log_event("red_team_worker_startup", outcome="success")
 
@@ -162,6 +165,8 @@ class WorkerSettings:
         evaluate_attack,
         orchestrator_tick,
         write_documentation,
+        propose_patch,
+        run_regression_sweep,
     ]
     max_tries: ClassVar[int] = 3
     keep_result: ClassVar[int] = 300  # 5-minute job deduplication window

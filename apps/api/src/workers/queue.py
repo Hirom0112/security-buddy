@@ -86,6 +86,53 @@ async def enqueue_documentation_write(verdict_id: UUID, request_id: str) -> None
         await redis.close()
 
 
+async def enqueue_harness_regression_sweep(
+    target_version_hint: str,
+    triggered_by: str,
+    request_id: str,
+) -> None:
+    """Push a harness.run_regression_sweep job onto the arq Redis queue.
+
+    Slice 6 handoff: the GitHub merge webhook enqueues this whenever a
+    Patch-Agent PR is merged. Coalesces concurrent sweeps for the same
+    target_version_hint via _job_id.
+    """
+    settings = get_settings()
+    redis = await create_pool(RedisSettings.from_dsn(settings.redis_url))
+    try:
+        await redis.enqueue_job(
+            "run_regression_sweep",
+            target_version_hint,
+            triggered_by,
+            request_id,
+            _job_id=f"harness:{target_version_hint}",
+        )
+    finally:
+        await redis.close()
+
+
+async def enqueue_patch_propose(vulnerability_id: UUID, request_id: str) -> None:
+    """Push a patch.propose job onto the arq Redis queue.
+
+    Slice 5 handoff: the Documentation worker enqueues this whenever a
+    non-critical vulnerabilities row lands in status='open'. _job_id is
+    f"patch:{vulnerability_id}" so concurrent enqueues collapse (defence
+    on top of run_propose's existing-patch short-circuit + the partial
+    unique index on patches.vulnerability_id).
+    """
+    settings = get_settings()
+    redis = await create_pool(RedisSettings.from_dsn(settings.redis_url))
+    try:
+        await redis.enqueue_job(
+            "propose_patch",
+            str(vulnerability_id),
+            request_id,
+            _job_id=f"patch:{vulnerability_id}",
+        )
+    finally:
+        await redis.close()
+
+
 async def enqueue_judge_evaluate(attack_id: UUID, request_id: str) -> None:
     """Push a judge.evaluate job onto the arq Redis queue.
 

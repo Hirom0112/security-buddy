@@ -16,9 +16,11 @@ from typing import Any
 from uuid import UUID
 
 from src.agents.documentation.document import run_document
+from src.domain.vulnerability import VulnerabilityStatus
 from src.llm_client.client import LLMClient  # noqa: TC001
 from src.observability.context import set_request_id
 from src.observability.events import log_event
+from src.workers.queue import enqueue_patch_propose
 
 
 async def write_documentation(
@@ -58,6 +60,21 @@ async def write_documentation(
         "skipped_reason": outcome.skipped_reason,
         "used_fallback": outcome.used_fallback,
     }
+
+    # Slice 5 handoff: enqueue the Patch Agent for non-critical findings.
+    # Critical-severity drafts are gated until the operator flips them to
+    # 'open' from the UI.
+    if (
+        outcome.vulnerability_id is not None
+        and outcome.status is VulnerabilityStatus.OPEN
+    ):
+        await enqueue_patch_propose(outcome.vulnerability_id, request_id)
+        log_event(
+            "patch_enqueued_from_documentation",
+            verdict_id=verdict_id,
+            vulnerability_id=str(outcome.vulnerability_id),
+            outcome="enqueued",
+        )
 
     log_event(
         "documentation_job_finished",

@@ -1,5 +1,8 @@
 """VulnerabilityRepository — write side for the Documentation Agent.
 
+Slice 5 adds get_by_id() and update_status() for the Patch Agent and the
+operator-facing patches route.
+
 Architectural boundary (import-linter): imports from src.domain only.
 
 Idempotency:
@@ -24,7 +27,7 @@ from uuid import UUID
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.domain.vulnerability import Vulnerability
+from src.domain.vulnerability import Vulnerability, VulnerabilityStatus
 
 _VULN_COLS = (
     "id, vuln_id, attack_id, verdict_id, severity, title, clinical_impact,"
@@ -163,3 +166,37 @@ class VulnerabilityRepository:
                 "vulnerabilities INSERT returned no row — schema or session bug"
             )
         return Vulnerability.model_validate(dict(row))
+
+    async def get_by_id(
+        self,
+        session: AsyncSession,
+        vulnerability_id: UUID,
+    ) -> Vulnerability | None:
+        result = await session.execute(
+            sa.text(
+                f"SELECT {_VULN_COLS} FROM vulnerabilities WHERE id = :id"  # noqa: S608
+            ),
+            {"id": str(vulnerability_id)},
+        )
+        row = result.mappings().first()
+        return Vulnerability.model_validate(dict(row)) if row else None
+
+    async def update_status(
+        self,
+        session: AsyncSession,
+        *,
+        vulnerability_id: UUID,
+        new_status: VulnerabilityStatus,
+    ) -> Vulnerability | None:
+        """Optimistic-locked status transition. Returns the new row, or None."""
+        result = await session.execute(
+            sa.text(
+                "UPDATE vulnerabilities"  # noqa: S608
+                " SET status = :s, version_id = version_id + 1"
+                " WHERE id = :id"
+                f" RETURNING {_VULN_COLS}"
+            ),
+            {"id": str(vulnerability_id), "s": new_status.value},
+        )
+        row = result.mappings().first()
+        return Vulnerability.model_validate(dict(row)) if row else None

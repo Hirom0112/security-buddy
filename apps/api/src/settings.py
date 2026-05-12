@@ -71,6 +71,17 @@ class Settings(BaseSettings):
         default=None,
         description="GitHub PAT scoped to the OpenEMR fork only (repo scope)",
     )
+    github_fork_repo: str | None = Field(
+        default=None,
+        description=(
+            "GitHub repository in 'owner/name' form for the OpenEMR fork. "
+            "The Patch Agent only ever opens PRs against this single repo."
+        ),
+    )
+    github_default_branch: str = Field(
+        default="main",
+        description="Default branch of the OpenEMR fork (PRs target this).",
+    )
     github_webhook_secret: SecretStr | None = Field(
         default=None,
         description=(

@@ -148,7 +148,20 @@ def test_github_webhook_ping_acknowledged(client: TestClient) -> None:
     assert resp.json()["status"] == "pong"
 
 
-def test_github_webhook_merged_pr_accepted(client: TestClient) -> None:
+@patch(
+    "src.routes.webhooks.enqueue_harness_regression_sweep",
+    new_callable=AsyncMock,
+)
+@patch("src.routes.webhooks.PatchRepository")
+def test_github_webhook_merged_pr_accepted(
+    mock_repo_cls: Any,
+    mock_enqueue: AsyncMock,
+    client: TestClient,
+) -> None:
+    # No patches row matches the head branch — webhook still accepts.
+    mock_repo = MagicMock()
+    mock_repo.get_by_branch_name = AsyncMock(return_value=None)
+    mock_repo_cls.return_value = mock_repo
     body = json.dumps(
         {
             "action": "closed",
@@ -157,6 +170,7 @@ def test_github_webhook_merged_pr_accepted(client: TestClient) -> None:
                 "merged": True,
                 "merge_commit_sha": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
                 "base": {"ref": "main"},
+                "head": {"ref": "security-buddy/vul-0001"},
             },
         }
     ).encode()
@@ -173,6 +187,7 @@ def test_github_webhook_merged_pr_accepted(client: TestClient) -> None:
     payload = resp.json()
     assert payload["status"] == "accepted"
     assert payload["pr_number"] == 42
+    mock_enqueue.assert_awaited_once()
 
 
 def test_github_webhook_unmerged_pr_ignored(client: TestClient) -> None:

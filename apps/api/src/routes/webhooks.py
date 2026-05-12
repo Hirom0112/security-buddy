@@ -16,12 +16,19 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-from typing import Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 
+from src.domain.patch import PatchStatus
+from src.observability.context import get_request_id
 from src.observability.events import log_event
+from src.repositories.patches import PatchRepository
 from src.settings import Settings, get_settings
+from src.workers.queue import enqueue_harness_regression_sweep
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
@@ -136,22 +143,62 @@ async def github_webhook(
     pr_number = pr.get("number")
     sha = (pr.get("merge_commit_sha") or "").strip() or None
     base_ref = (pr.get("base") or {}).get("ref")
+    head_branch = ((pr.get("head") or {}).get("ref") or "").strip() or None
 
-    # Slice 6 will enqueue harness.run_regressions(target_version_id) here.
-    # For now we just acknowledge — the regression worker does not exist yet
-    # and we do not want a dangling enqueue with no consumer.
+    # Slice 5: locate the Patch row by head branch name and flip it to merged.
+    # Slice 6 enqueues the regression worker on the same path.
+    patch_id: str | None = None
+    factory: async_sessionmaker[AsyncSession] = (
+        request.app.state.session_factory
+    )
+    if head_branch is not None:
+        async with factory() as session:
+            try:
+                repo = PatchRepository()
+                patch = await repo.get_by_branch_name(session, head_branch)
+                if (
+                    patch is not None
+                    and patch.status is PatchStatus.AWAITING_HUMAN_REVIEW
+                ):
+                    updated = await repo.update_status(
+                        session,
+                        patch_id=patch.id,
+                        new_status=PatchStatus.MERGED,
+                        merged_at_sql=True,
+                    )
+                    if updated is not None:
+                        patch_id = str(updated.id)
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
+
+    # Slice 6: enqueue the regression sweep against the new target version.
+    # We pass merge_commit_sha as the version hint; the worker upserts a
+    # target_versions row keyed on the active manifest's target_id.
+    version_hint = sha or "unknown"
+    request_id = get_request_id() or "webhook"
+    await enqueue_harness_regression_sweep(
+        target_version_hint=version_hint,
+        triggered_by="github_merge",
+        request_id=request_id,
+    )
+
     log_event(
         "github_webhook_accepted",
         event=x_github_event,
         pr_number=pr_number,
         merge_commit_sha=sha,
         base_ref=base_ref,
-        outcome="accepted_placeholder",
+        head_branch=head_branch,
+        patch_id=patch_id,
+        outcome="accepted",
     )
 
     return {
         "status": "accepted",
         "pr_number": pr_number,
         "merge_commit_sha": sha,
-        "note": "regression worker wired in Slice 6",
+        "patch_id": patch_id,
+        "regression_sweep": "enqueued",
     }

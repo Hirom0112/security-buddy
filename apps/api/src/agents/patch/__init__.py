@@ -1,1 +1,2 @@
-# Patch agent — empty for Slice 0. Implemented in Slice 5.
+# Patch Agent — Slice 5. Vulnerability rows → GitHub PRs against the
+# OpenEMR fork. Branch protection on the fork enforces the human gate.
