@@ -204,17 +204,26 @@ labeled ground-truth set.
 
 ### Definition of Done
 
-- [ ] `pytest` unit tests on the Judge's rubric resolution and JSON
-      parsing pass
+- [x] `pytest` unit tests on the Judge's rubric resolution and JSON
+      parsing pass (29 new tests in `tests/unit/judge/`; 187 unit total green)
 - [ ] Eval runner executes against ground_truth set; baseline accuracy
-      recorded in `docs/EVAL_BASELINES.md`
+      recorded in `docs/EVAL_BASELINES.md` (runner ready at
+      `tests/evals/run_judge_eval.py`; 32 ground-truth tuples loaded.
+      First eval run requires `OPENROUTER_API_KEY` — execute via
+      workflow_dispatch on `.github/workflows/judge-eval.yml` or locally,
+      then paste the row into EVAL_BASELINES.md)
 - [ ] Verdict distribution on ground_truth is within 20% of expected
+      (depends on first eval run)
 - [ ] Run the Slice 1 campaign end-to-end: Red Team → Judge produces
-      verdicts for all 10 attacks
+      verdicts for all 10 attacks (handoff wired:
+      `red_team_worker` enqueues `judge.evaluate(attack_id)` per attack
+      transitioned to awaiting_judgment; needs operator to re-fire campaign
+      against the live target)
 - [ ] At least one verdict is `exploit` or `partial` (target genuinely has
       attack surface; if all are `safe`, the rubric is too strict or the
       attacks are too weak — investigate before proceeding)
 - [ ] LangSmith trace shows Judge as a separate trace node from Red Team
+      (operator-side verification after live re-run)
 
 ### Out of scope
 
