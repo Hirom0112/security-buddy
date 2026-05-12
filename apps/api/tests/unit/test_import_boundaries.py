@@ -19,11 +19,14 @@ def test_import_boundaries_clean() -> None:
     venv_dir = Path(sys.executable).parent
     lint_imports_bin = venv_dir / "lint-imports"
 
+    # apps/api root: this file is at apps/api/tests/unit/test_import_boundaries.py,
+    # so the project root is three parents up.
+    project_root = Path(__file__).resolve().parents[2]
     result = subprocess.run(  # noqa: S603
         [str(lint_imports_bin)],
         capture_output=True,
         text=True,
-        cwd="/Users/hirom/Desktop/repos-gauntlet/security_buddy/apps/api",
+        cwd=str(project_root),
     )
     if result.returncode != 0:
         pytest_fail_msg = (
