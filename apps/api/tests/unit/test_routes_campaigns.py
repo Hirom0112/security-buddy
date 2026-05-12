@@ -63,9 +63,12 @@ _FAKE_BRIEF_ID = uuid4()
 def _fake_campaign() -> Campaign:
     from datetime import UTC, datetime
 
+    from src.domain.campaign import CampaignMode
+
     return Campaign(
         id=_FAKE_CAMPAIGN_ID,
         status=CampaignStatus.PENDING,
+        mode=CampaignMode.LIVE,
         budget_usd=Decimal("5.00"),
         target_version_id=None,
         target_subcategory="prompt_injection/indirect_via_upload",

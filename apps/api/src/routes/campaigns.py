@@ -29,6 +29,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker  # noqa: TC002
 
+from src.domain.campaign import CampaignMode
 from src.observability.context import get_request_id
 from src.observability.events import log_event
 from src.repositories.campaigns import CampaignRepository
@@ -74,6 +75,13 @@ class CreateCampaignRequest(BaseModel):
     variant_count: int = Field(..., ge=1, le=200)
     budget_usd: Decimal = Field(..., gt=Decimal("0"), le=Decimal("100"))
     success_criteria: dict[str, str] = Field(default_factory=dict)
+    mode: CampaignMode = Field(
+        default=CampaignMode.LIVE,
+        description=(
+            "'live' (default) — real billable run, counted on the dashboard."
+            " 'smoke' — plumbing/CI run, excluded from dashboard stats."
+        ),
+    )
 
 
 class CreateCampaignResponse(BaseModel):
@@ -177,6 +185,7 @@ async def create_campaign(
         db,
         target_subcategory=body.target_subcategory,
         budget_usd=body.budget_usd,
+        mode=body.mode,
     )
 
     brief = await campaign_repo.add_brief(
@@ -205,6 +214,7 @@ async def create_campaign(
         brief_id=str(brief.id),
         subcategory=body.target_subcategory,
         variant_count=body.variant_count,
+        mode=body.mode.value,
         outcome="enqueued",
     )
 
@@ -232,6 +242,13 @@ class StartCampaignRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     budget_usd: Decimal = Field(..., gt=Decimal("0"), le=Decimal("100"))
+    mode: CampaignMode = Field(
+        default=CampaignMode.LIVE,
+        description=(
+            "'live' (default) — real billable run, counted on the dashboard."
+            " 'smoke' — plumbing/CI run, excluded from dashboard stats."
+        ),
+    )
 
 
 class StartCampaignResponse(BaseModel):
@@ -265,6 +282,7 @@ async def start_campaign(
         db,
         target_subcategory=None,
         budget_usd=body.budget_usd,
+        mode=body.mode,
     )
 
     # Session commit happens in _get_db_session on exit.
@@ -277,6 +295,7 @@ async def start_campaign(
         "campaign_start_enqueued",
         campaign_id=str(campaign.id),
         budget_usd=float(body.budget_usd),
+        mode=body.mode.value,
         outcome="enqueued",
     )
 

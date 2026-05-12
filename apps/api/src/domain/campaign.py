@@ -28,6 +28,18 @@ class CampaignStatus(StrEnum):
     NO_CANDIDATES = "no_candidates"
 
 
+class CampaignMode(StrEnum):
+    """Live = real, billable run counted in dashboard stats.
+
+    Smoke = test run (CI, local development, plumbing checks) that produces
+    attacks but is excluded from coverage/cost/attempts on the dashboard.
+    Smoke campaigns still appear on /campaigns, tagged so they are visible.
+    """
+
+    LIVE = "live"
+    SMOKE = "smoke"
+
+
 class BriefStatus(StrEnum):
     """Allowed campaign_brief lifecycle states."""
 
@@ -43,6 +55,7 @@ class Campaign(BaseModel):
 
     id: UUID
     status: CampaignStatus
+    mode: CampaignMode
     budget_usd: Decimal
     target_version_id: UUID | None
     target_subcategory: str | None

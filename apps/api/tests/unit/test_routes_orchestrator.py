@@ -45,9 +45,12 @@ _CAMPAIGN_ID = uuid4()
 
 
 def _fake_campaign() -> Campaign:
+    from src.domain.campaign import CampaignMode
+
     return Campaign(
         id=_CAMPAIGN_ID,
         status=CampaignStatus.PENDING,
+        mode=CampaignMode.LIVE,
         budget_usd=Decimal("5.00"),
         target_version_id=None,
         target_subcategory=None,

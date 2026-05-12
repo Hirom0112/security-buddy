@@ -14,7 +14,7 @@ from uuid import UUID
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.domain.campaign import Campaign, CampaignBrief, CampaignStatus
+from src.domain.campaign import Campaign, CampaignBrief, CampaignMode, CampaignStatus
 from src.domain.errors import ConflictError, NotFoundError
 
 
@@ -36,6 +36,7 @@ class CampaignRepository:
         target_subcategory: str | None,
         budget_usd: Decimal,
         target_version_id: UUID | None = None,
+        mode: CampaignMode = CampaignMode.LIVE,
     ) -> Campaign:
         """Insert a new campaign row with status='pending'.
 
@@ -44,19 +45,25 @@ class CampaignRepository:
         manual-trigger campaigns (Slice 1 flow) it must be a valid
         attack_taxonomy.subcategory string.
 
+        mode defaults to LIVE (real, billable, counted on the dashboard).
+        Set SMOKE for plumbing checks and CI runs that should not inflate
+        coverage or cost stats.
+
         Returns the newly created Campaign entity.
         """
         result = await session.execute(
             sa.text(
                 "INSERT INTO campaigns"
-                " (status, budget_usd, target_version_id, target_subcategory,"
-                "  created_at, version_id)"
-                " VALUES ('pending', :budget, :version_id, :subcategory, now(), 1)"
-                " RETURNING id, status, budget_usd, target_version_id,"
+                " (status, mode, budget_usd, target_version_id,"
+                "  target_subcategory, created_at, version_id)"
+                " VALUES ('pending', :mode, :budget, :version_id,"
+                "         :subcategory, now(), 1)"
+                " RETURNING id, status, mode, budget_usd, target_version_id,"
                 "   target_subcategory, created_at, started_at, completed_at,"
                 "   version_id"
             ),
             {
+                "mode": mode.value,
                 "budget": str(budget_usd),
                 "version_id": str(target_version_id) if target_version_id else None,
                 "subcategory": target_subcategory,
@@ -75,7 +82,7 @@ class CampaignRepository:
         """Return the Campaign with the given id, or None if not found."""
         result = await session.execute(
             sa.text(
-                "SELECT id, status, budget_usd, target_version_id,"
+                "SELECT id, status, mode, budget_usd, target_version_id,"
                 "  target_subcategory, created_at, started_at, completed_at,"
                 "  version_id"
                 " FROM campaigns WHERE id = :id"
@@ -106,7 +113,7 @@ class CampaignRepository:
                 "UPDATE campaigns"
                 " SET status = :status, version_id = version_id + 1"
                 " WHERE id = :id AND version_id = :expected_version"
-                " RETURNING id, status, budget_usd, target_version_id,"
+                " RETURNING id, status, mode, budget_usd, target_version_id,"
                 "   target_subcategory, created_at, started_at, completed_at,"
                 "   version_id"
             ),
@@ -152,7 +159,7 @@ class CampaignRepository:
                 "UPDATE campaigns"
                 " SET target_subcategory = :sub, version_id = version_id + 1"
                 " WHERE id = :id AND version_id = :expected_version"
-                " RETURNING id, status, budget_usd, target_version_id,"
+                " RETURNING id, status, mode, budget_usd, target_version_id,"
                 "   target_subcategory, created_at, started_at, completed_at,"
                 "   version_id"
             ),
