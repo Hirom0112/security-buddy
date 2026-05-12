@@ -1,0 +1,40 @@
+# Local development only — NOT for production.
+# Provides Postgres 16 and Redis 7 for the Security Buddy API and worker.
+# The API and arq worker are run separately via uv / uvicorn (see CLAUDE.md).
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: security_buddy
+      POSTGRES_PASSWORD: security_buddy
+      POSTGRES_DB: security_buddy
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U security_buddy -d security_buddy"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+volumes:
+  pg_data:
+  redis_data:
