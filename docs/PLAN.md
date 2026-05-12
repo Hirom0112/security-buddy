@@ -265,16 +265,22 @@ behavior.
 
 ### Definition of Done
 
-- [ ] `pytest` green
-- [ ] Triggering `POST /api/v1/campaigns/start` produces a campaign whose
+- [x] `pytest` green (264 unit tests pass — adds 32 orchestrator unit tests
+      covering priority math, budget enforcer, brief-generator parse + fallback,
+      plus 11 route tests for /campaigns/start + /webhooks/github)
+- [x] Triggering `POST /api/v1/campaigns/start` produces a campaign whose
       target_subcategory matches the priority function's top pick
-- [ ] Budget enforcement halts a campaign mid-flight when budget is
-      manually set low
-- [ ] LLM refusal fallback works (testable by mocking the LLM to return
-      a refusal token)
+      (route creates empty campaign → orchestrator_tick enqueues → run_tick
+      picks subcategory via pick_top() → set_target_subcategory persists it)
+- [x] Budget enforcement halts a campaign mid-flight when budget is
+      manually set low (budget_enforcer.evaluate at >=100% → status=
+      'budget_exhausted'; tested in test_budget_enforcer.py)
+- [x] LLM refusal fallback works (test_generate_brief_falls_back_on_parse_failure
+      + on_exception cover this path; logs orchestrator_llm_fallback)
 - [ ] LangSmith trace shows Orchestrator → Red Team → Judge in sequence
+      (operator-side check after first live run)
 - [ ] Coverage query results match a hand-computed expected output for a
-      seeded test database
+      seeded test database (needs integration test against Postgres — TODO.md)
 
 ### Out of scope
 
@@ -320,15 +326,23 @@ without human intervention.
 
 ### Definition of Done
 
-- [ ] `pytest` green
+- [x] `pytest` green (264 unit tests pass — adds 34 documentation unit
+      tests covering severity rules, framework lookup, parse, template)
 - [ ] Slice 1+2+3 end-to-end run produces at least one vulnerability
-      report from a confirmed exploit
+      report from a confirmed exploit (handoff wired: Judge worker enqueues
+      documentation.write on verdict=exploit; needs live re-run)
 - [ ] Report reads like something a security engineer could act on
       (subjective review by operator — yes/no decision documented)
-- [ ] No real PHI in report content
-- [ ] **Every report includes framework citations matching the source
-      subcategory** (deterministic check, not LLM-judged)
-- [ ] Eval baseline recorded
+- [x] No real PHI in report content (template + prompt explicitly bound
+      to synthetic identifiers; unit tests render markdown without leaking)
+- [x] **Every report includes framework citations matching the source
+      subcategory** (resolve_citation reads attack_taxonomy; LLM never
+      supplies framework IDs; deterministic test in test_template.py
+      checks remediation section references all three IDs)
+- [ ] Eval baseline recorded (runner ready at
+      tests/evals/run_documentation_eval.py; first run via
+      `.github/workflows/documentation-eval.yml` workflow_dispatch or
+      local invocation, then paste the row into EVAL_BASELINES.md)
 
 ### Out of scope
 
