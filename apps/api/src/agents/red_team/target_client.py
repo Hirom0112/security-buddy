@@ -153,6 +153,8 @@ class TargetClient:
         self._provider_id: str | None = None
         self._session_id: str | None = None
         self._jwt_exp: float | None = None  # Unix timestamp
+        self._provider_name: str = "Provider"  # overwritten in _step2
+        self._panel_patient_ids: list[str] = []  # overwritten in _step2
 
         # The httpx client is created in __aenter__.
         self._http: httpx.AsyncClient | None = None
@@ -234,10 +236,16 @@ class TargetClient:
         }
 
         try:
+            # Do NOT follow redirects: OpenEMR responds 302 with the session
+            # cookie in Set-Cookie. Following the redirect lands on a page
+            # whose response has no cookies, and httpx's `resp.cookies`
+            # surfaces only the final response's cookies — so we'd see
+            # nothing. Capture cookies from the immediate 302 instead.
             resp = await http.post(
                 login_url,
                 data=body,
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
+                follow_redirects=False,
             )
         except (httpx.ConnectError, httpx.TimeoutException, httpx.NetworkError) as exc:
             log_event(
@@ -259,9 +267,14 @@ class TargetClient:
             )
             raise TargetUnavailableError(f"OpenEMR returned {resp.status_code} on login")
 
-        # Success is indicated by the ABSENCE of the login form in the response.
-        # Failure: HTTP 200 with the login form re-rendered.
-        if _LOGIN_FORM_SIGNATURE in resp.text and "clearPass" in resp.text:
+        # OpenEMR signals success with a 302 redirect to /interface/main/...,
+        # and signals failure with a 200 that re-renders the login form.
+        is_login_form = (
+            resp.status_code == 200
+            and _LOGIN_FORM_SIGNATURE in resp.text
+            and "clearPass" in resp.text
+        )
+        if is_login_form:
             log_event(
                 "target_login_attempt",
                 host=self._openemr_url,
@@ -329,8 +342,18 @@ class TargetClient:
             raise TargetAuthError("copilot-config JSON does not contain a 'jwt' field")
 
         self._jwt = jwt
-        self._provider_id = config.get("provider_id")
-        self._session_id = config.get("session_id")
+        # The OpenEMR module emits camelCase keys (providerId, sessionId,
+        # patientIds, providerName). Manifest §2B used snake_case which was
+        # incorrect; the live module is camelCase. Accept either form so a
+        # future module rename doesn't quietly break us.
+        self._provider_id = config.get("providerId") or config.get("provider_id")
+        self._session_id = config.get("sessionId") or config.get("session_id")
+        provider_name = config.get("providerName") or config.get("provider_name")
+        self._provider_name = provider_name if isinstance(provider_name, str) else "Provider"
+        panel = config.get("patientIds") or config.get("patient_ids") or []
+        self._panel_patient_ids = (
+            [str(pid) for pid in panel] if isinstance(panel, list) else []
+        )
 
         # Decode the exp claim (never log the full JWT).
         self._jwt_exp = self._decode_jwt_exp(jwt)
@@ -453,13 +476,18 @@ class TargetClient:
 
         sid = session_id or self._session_id or ""
         provider_id = self._provider_id or ""
+        # If the caller passed an empty patient_ids list, fall back to the
+        # authenticated user's full panel — without at least one in-panel
+        # ID, the dispatcher's pre-tool scope check fails open per the
+        # manifest §3.5 design and we don't actually exercise the LLM.
+        effective_patient_ids = patient_ids if patient_ids else self._panel_patient_ids
 
         body: dict[str, Any] = {
             "message": message,
             "session_id": sid,
             "provider_id": provider_id,
-            "patient_ids": patient_ids,
-            "provider_name": "Provider",
+            "patient_ids": effective_patient_ids,
+            "provider_name": self._provider_name,
         }
 
         http = self._require_http()
