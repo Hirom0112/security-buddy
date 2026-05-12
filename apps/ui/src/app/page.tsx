@@ -1,32 +1,84 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Suspense } from "react";
+import { Bebas_Neue, DM_Mono, Nunito } from "next/font/google";
 import { getSession } from "@/lib/auth/session";
-import { AppShell } from "@/components/app-shell";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { SeverityBadge } from "@/components/badges";
+import { ThemedNav } from "@/components/themed-nav";
+import { DashboardHero } from "@/components/dashboard-hero";
+import { CountUp } from "@/components/count-up";
 import { coverageSnapshot, dashboardSummary } from "@/lib/db/queries";
+import type { CoverageRow, DashboardSummary } from "@/types";
+import styles from "./dashboard.module.css";
 
 export const dynamic = "force-dynamic";
+
+const bebasNeue = Bebas_Neue({
+  weight: "400",
+  subsets: ["latin"],
+  variable: "--font-bebas",
+  display: "swap",
+});
+const dmMono = DM_Mono({
+  weight: ["400", "500"],
+  subsets: ["latin"],
+  variable: "--font-dm-mono",
+  display: "swap",
+});
+const nunito = Nunito({
+  weight: ["700", "800", "900"],
+  subsets: ["latin"],
+  variable: "--font-nunito",
+  display: "swap",
+});
+
+const PARTICLES = [
+  { left: "8%", top: "60%", size: 2, color: "#00f5c4", dur: 6, delay: 0 },
+  { left: "20%", top: "70%", size: 1.5, color: "#7c3aed", dur: 8, delay: 1.5 },
+  { left: "75%", top: "65%", size: 2, color: "#00f5c4", dur: 7, delay: 0.8 },
+  { left: "88%", top: "55%", size: 1, color: "#ffb830", dur: 5, delay: 2 },
+  { left: "50%", top: "75%", size: 1.5, color: "#ff3d6b", dur: 9, delay: 3 },
+];
 
 export default async function DashboardPage() {
   const session = await getSession();
   if (session === null) redirect("/login");
 
   return (
-    <AppShell>
-      <div className="space-y-8">
-        <Suspense fallback={<DashboardSkeleton />}>
-          <DashboardContent />
-        </Suspense>
-      </div>
-    </AppShell>
+    <main
+      className={`${styles.root} ${bebasNeue.variable} ${dmMono.variable} ${nunito.variable}`}
+    >
+      <div className={styles.gridBg} aria-hidden="true" />
+      <div className={styles.scanlines} aria-hidden="true" />
+      {PARTICLES.map((p, i) => (
+        <span
+          key={i}
+          className={styles.particle}
+          aria-hidden="true"
+          style={{
+            left: p.left,
+            top: p.top,
+            width: `${p.size}px`,
+            height: `${p.size}px`,
+            background: p.color,
+            animationDuration: `${p.dur}s`,
+            animationDelay: `${p.delay}s`,
+          }}
+        />
+      ))}
+
+      <ThemedNav />
+      <DashboardHero />
+
+      <Suspense fallback={<DashboardSkeleton />}>
+        <DashboardContent />
+      </Suspense>
+    </main>
   );
 }
 
 async function DashboardContent() {
-  let summary;
-  let coverage;
+  let summary: DashboardSummary;
+  let coverage: CoverageRow[];
   try {
     [summary, coverage] = await Promise.all([
       dashboardSummary(),
@@ -40,154 +92,243 @@ async function DashboardContent() {
     summary.total_subcategories === 0
       ? 0
       : Math.round(
-          (summary.covered_subcategories / summary.total_subcategories) * 100
+          (summary.covered_subcategories / summary.total_subcategories) * 100,
         );
 
+  const openVulns = Object.values(
+    summary.open_vulnerabilities_by_severity,
+  ).reduce((a, b) => a + b, 0);
+
+  const attemptedCount = coverage.filter((r) => r.attempts > 0).length;
+
   return (
-    <>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Coverage</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">
-              {summary.covered_subcategories} / {summary.total_subcategories}
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Subcategories touched ({coveragePct}%)
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">
-              Open vulnerabilities
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">
-              {Object.values(summary.open_vulnerabilities_by_severity).reduce(
-                (a, b) => a + b,
-                0
-              )}
-            </p>
-            <div className="mt-2 flex flex-wrap gap-1">
-              {(["critical", "high", "medium", "low"] as const).map((sev) =>
-                summary.open_vulnerabilities_by_severity[sev] > 0 ? (
-                  <span key={sev} className="flex items-center gap-1 text-xs">
-                    <SeverityBadge severity={sev} />
-                    <span className="font-medium">
-                      {summary.open_vulnerabilities_by_severity[sev]}
-                    </span>
-                  </span>
-                ) : null
-              )}
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Pending PRs</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">{summary.pending_patches}</p>
-            <Link
-              href="/patches"
-              className="mt-1 text-xs text-blue-700 hover:underline"
-            >
-              View queue →
-            </Link>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Cost</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">
-              {formatUsd(summary.total_cost_usd)}
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {formatUsd(summary.last_24h_cost_usd)} in last 24h
-            </p>
-          </CardContent>
-        </Card>
+    <div className={styles.main}>
+      <div className={styles.statGrid}>
+        {/* Coverage */}
+        <div className={`${styles.statCard} ${styles.statCardCoverage}`}>
+          <div className={styles.statLabel}>
+            <svg className={styles.statIcon} viewBox="0 0 16 16" fill="none">
+              <circle
+                cx="8"
+                cy="8"
+                r="7"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              />
+              <path
+                d="M8 4v4l3 2"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              />
+            </svg>
+            Coverage
+          </div>
+          <div className={styles.statValue}>
+            <CountUp value={summary.covered_subcategories} />
+            <span className={styles.statDenom}>
+              / {summary.total_subcategories}
+            </span>
+          </div>
+          <div className={styles.coverageBar}>
+            <div
+              className={styles.coverageFill}
+              style={{ ["--fill" as string]: `${coveragePct}%` }}
+            />
+          </div>
+          <div className={styles.statSub}>
+            <span className={styles.pulseDot} />
+            {coveragePct}% subcategories touched
+          </div>
+        </div>
+
+        {/* Open Vulnerabilities */}
+        <div className={`${styles.statCard} ${styles.statCardVulns}`}>
+          <div className={styles.statLabel}>
+            <svg className={styles.statIcon} viewBox="0 0 16 16" fill="none">
+              <path
+                d="M8 2L2 5v5c0 3.3 2.5 6.4 6 7 3.5-.6 6-3.7 6-7V5Z"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              />
+              <path
+                d="M8 7v3M8 12h.01"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              />
+            </svg>
+            Open Vulnerabilities
+          </div>
+          <div className={`${styles.statValue} ${styles.statValueDanger}`}>
+            <CountUp value={openVulns} />
+          </div>
+          <div className={`${styles.statSub} ${styles.statSubDanger}`}>
+            <span
+              className={styles.pulseDot}
+              style={{ ["--accent" as string]: "var(--sb-danger)" }}
+            />
+            {openVulns === 0
+              ? "No active exploits detected"
+              : `${openVulns} active across severities`}
+          </div>
+        </div>
+
+        {/* Pending PRs */}
+        <div className={`${styles.statCard} ${styles.statCardPrs}`}>
+          <div className={styles.statLabel}>
+            <svg className={styles.statIcon} viewBox="0 0 16 16" fill="none">
+              <circle cx="4" cy="4" r="2" stroke="currentColor" strokeWidth="1.5" />
+              <circle cx="4" cy="12" r="2" stroke="currentColor" strokeWidth="1.5" />
+              <circle cx="12" cy="4" r="2" stroke="currentColor" strokeWidth="1.5" />
+              <path
+                d="M4 6v4M6 4h4"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              />
+            </svg>
+            Pending PRs
+          </div>
+          <div className={`${styles.statValue} ${styles.statValueWarn}`}>
+            <CountUp value={summary.pending_patches} />
+          </div>
+          <div className={`${styles.statSub} ${styles.statSubWarn}`}>
+            <Link href="/patches">View queue →</Link>
+          </div>
+        </div>
+
+        {/* Cost */}
+        <div className={`${styles.statCard} ${styles.statCardCost}`}>
+          <div className={styles.statLabel}>
+            <svg className={styles.statIcon} viewBox="0 0 16 16" fill="none">
+              <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.5" />
+              <path
+                d="M8 4v1m0 6v1M6 6.5a2 2 0 012-1.5h.5A1.5 1.5 0 0110 6.5v0A1.5 1.5 0 018.5 8h-1A1.5 1.5 0 006 9.5v0A1.5 1.5 0 007.5 11H8a2 2 0 002-1.5"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              />
+            </svg>
+            Cost
+          </div>
+          <div className={`${styles.statValue} ${styles.statValueCost}`}>
+            {formatUsd(summary.total_cost_usd)}
+          </div>
+          <div className={`${styles.statSub} ${styles.statSubCost}`}>
+            <span
+              className={styles.pulseDot}
+              style={{ ["--accent" as string]: "var(--sb-purple)" }}
+            />
+            {formatUsd(summary.last_24h_cost_usd)} in last 24h
+          </div>
+        </div>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Coverage map</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {coverage.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No attacks fired yet.
-            </p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-left text-xs text-muted-foreground">
-                    <th className="py-2 pr-4">Category / Subcategory</th>
-                    <th className="py-2 pr-4">Attempts</th>
-                    <th className="py-2 pr-4">Exploits</th>
-                    <th className="py-2 pr-4">Partials</th>
-                    <th className="py-2">Last attempted</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {coverage.map((row) => (
-                    <tr
-                      key={`${row.category}/${row.subcategory}`}
-                      className="border-b last:border-0"
+      <div className={styles.sectionHeader}>
+        <div className={styles.sectionTitle}>Coverage Map</div>
+        <div className={styles.sectionMeta}>
+          {summary.total_subcategories} SUBCATEGORIES &nbsp;·&nbsp;
+          <span className={styles.sectionMetaActive}>
+            {attemptedCount} ATTEMPTED
+          </span>
+        </div>
+      </div>
+
+      <div className={styles.tableWrap}>
+        {coverage.length === 0 ? (
+          <div className={styles.emptyState}>No attacks fired yet.</div>
+        ) : (
+          <table className={styles.coverageTable}>
+            <thead>
+              <tr>
+                <th>Category / Subcategory</th>
+                <th className={styles.thRight}>Attempts</th>
+                <th className={styles.thRight}>Exploits</th>
+                <th className={styles.thRight}>Partials</th>
+                <th className={styles.thRight}>Last Attempted</th>
+              </tr>
+            </thead>
+            <tbody>
+              {coverage.map((row) => {
+                const active = row.attempts > 0;
+                return (
+                  <tr
+                    key={`${row.category}/${row.subcategory}`}
+                    className={active ? styles.activeRow : undefined}
+                  >
+                    <td>
+                      <span
+                        className={`${styles.catLabel} ${categoryClass(row.category, styles)}`}
+                      >
+                        {row.category}
+                      </span>
+                      <span className={styles.subLabel}>
+                        / {row.category}/{row.subcategory}
+                      </span>
+                    </td>
+                    <td
+                      className={`${styles.tdRight} ${active ? styles.attemptsVal : styles.zero}`}
                     >
-                      <td className="py-2 pr-4">
-                        <span className="text-muted-foreground">
-                          {row.category}
-                        </span>
-                        <span className="px-1">/</span>
-                        <span className="font-medium">{row.subcategory}</span>
-                      </td>
-                      <td className="py-2 pr-4 tabular-nums">
-                        {row.attempts}
-                      </td>
-                      <td className="py-2 pr-4 tabular-nums text-red-700">
-                        {row.exploits}
-                      </td>
-                      <td className="py-2 pr-4 tabular-nums text-orange-700">
-                        {row.partials}
-                      </td>
-                      <td className="py-2 text-xs text-muted-foreground">
-                        {row.last_attempted_at
-                          ? new Date(row.last_attempted_at).toLocaleString()
-                          : "—"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    </>
+                      {row.attempts}
+                    </td>
+                    <td
+                      className={`${styles.tdRight} ${row.exploits > 0 ? styles.exploitsVal : styles.zero}`}
+                    >
+                      {row.exploits}
+                    </td>
+                    <td
+                      className={`${styles.tdRight} ${row.partials > 0 ? styles.partialsVal : styles.zero}`}
+                    >
+                      {row.partials}
+                    </td>
+                    <td
+                      className={`${styles.tdRight} ${row.last_attempted_at ? styles.dateVal : styles.zero}`}
+                    >
+                      {row.last_attempted_at
+                        ? new Date(row.last_attempted_at).toLocaleString()
+                        : "—"}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
   );
+}
+
+function categoryClass(
+  category: string,
+  s: Record<string, string>,
+): string {
+  switch (category) {
+    case "data_exfiltration":
+      return s.catDataExfiltration ?? "";
+    case "dos":
+      return s.catDos ?? "";
+    case "identity_role":
+      return s.catIdentityRole ?? "";
+    case "prompt_injection":
+      return s.catPromptInjection ?? "";
+    default:
+      return "";
+  }
 }
 
 function DashboardSkeleton() {
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      {[1, 2, 3, 4].map((i) => (
-        <Card key={i}>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Loading…</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-8 w-16 animate-pulse rounded bg-muted" />
-          </CardContent>
-        </Card>
-      ))}
+    <div className={styles.main}>
+      <div className={styles.statGrid}>
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} className={styles.statCard}>
+            <div className={styles.statLabel}>Loading…</div>
+            <div className={styles.statValue}>—</div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -195,13 +336,13 @@ function DashboardSkeleton() {
 function DbErrorBanner({ error }: { error: unknown }) {
   const message = error instanceof Error ? error.message : String(error);
   return (
-    <div className="rounded-lg border border-dashed border-amber-400 bg-amber-50 px-6 py-4 text-sm text-amber-900">
-      <p className="font-medium">Database unreachable</p>
-      <p className="mt-1 text-xs">{message}</p>
-      <p className="mt-2 text-xs">
-        Set <code className="rounded bg-amber-100 px-1">DATABASE_URL</code> and
-        ensure Postgres is reachable from the UI process.
-      </p>
+    <div className={styles.errorBanner}>
+      <strong>Database unreachable</strong>
+      <div>{message}</div>
+      <div style={{ marginTop: 8 }}>
+        Set <code>DATABASE_URL</code> and ensure Postgres is reachable from the
+        UI process.
+      </div>
     </div>
   );
 }

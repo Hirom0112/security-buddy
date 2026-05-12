@@ -1,10 +1,10 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getSession } from "@/lib/auth/session";
-import { AppShell } from "@/components/app-shell";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ThemedShell } from "@/components/themed-shell";
 import { CampaignStatusBadge } from "@/components/badges";
 import { listCampaigns } from "@/lib/db/queries";
+import styles from "@/app/dashboard.module.css";
 
 export const dynamic = "force-dynamic";
 
@@ -17,62 +17,94 @@ export default async function CampaignsPage() {
     campaigns = await listCampaigns();
   } catch (err) {
     return (
-      <AppShell>
+      <ThemedShell eyebrow="// Campaigns" title="Campaigns">
         <DbError error={err} />
-      </AppShell>
+      </ThemedShell>
     );
   }
 
+  const liveCount = campaigns.filter((c) => c.mode === "live").length;
+  const smokeCount = campaigns.length - liveCount;
+
   return (
-    <AppShell>
-      <Card>
-        <CardHeader>
-          <CardTitle>Campaigns</CardTitle>
-        </CardHeader>
-        <CardContent>
+    <ThemedShell
+      eyebrow="// Campaigns"
+      title="Campaigns"
+      meta={
+        <>
+          <span>{campaigns.length} TOTAL</span>
+          <span className={styles.heroSubDivider} />
+          <span className={styles.sectionMetaActive}>{liveCount} LIVE</span>
+          {smokeCount > 0 ? (
+            <>
+              <span className={styles.heroSubDivider} />
+              <span>{smokeCount} SMOKE</span>
+            </>
+          ) : null}
+        </>
+      }
+    >
+      <div className={styles.panel}>
+        <div className={styles.panelHeader}>
+          <div className={styles.panelHeaderLeft}>
+            <div className={styles.panelTitle}>All Campaigns</div>
+            <div className={styles.panelSubtitle}>
+              Start one with{" "}
+              <code>POST /api/v1/campaigns/start</code>. Live runs are counted
+              on the dashboard; smoke runs are tagged and excluded.
+            </div>
+          </div>
+        </div>
+        <div className={styles.panelBody}>
           {campaigns.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No campaigns yet. Run{" "}
-              <code className="rounded bg-muted px-1">
-                POST /api/v1/campaigns/start
-              </code>{" "}
-              against the API to kick one off.
-            </p>
+            <div className={styles.panelEmpty}>
+              No campaigns yet. Fire one to populate the dashboard.
+            </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+            <div style={{ overflowX: "auto" }}>
+              <table className={styles.dataTable}>
                 <thead>
-                  <tr className="border-b text-left text-xs text-muted-foreground">
-                    <th className="py-2 pr-4">Subcategory</th>
-                    <th className="py-2 pr-4">Status</th>
-                    <th className="py-2 pr-4">Budget</th>
-                    <th className="py-2 pr-4">Spent</th>
-                    <th className="py-2 pr-4">Created</th>
-                    <th className="py-2" />
+                  <tr>
+                    <th>Subcategory</th>
+                    <th>Status</th>
+                    <th>Budget</th>
+                    <th>Spent</th>
+                    <th>Created</th>
+                    <th />
                   </tr>
                 </thead>
                 <tbody>
                   {campaigns.map((c) => (
-                    <tr key={c.id} className="border-b last:border-0">
-                      <td className="py-2 pr-4 font-medium">
-                        {c.target_subcategory ?? "—"}
+                    <tr key={c.id}>
+                      <td>
+                        <span className={styles.dataMono}>
+                          {c.target_subcategory ?? "—"}
+                        </span>
+                        {c.mode === "smoke" ? (
+                          <span
+                            className="ml-2 inline-flex items-center rounded border border-[#ffb830]/40 bg-[#ffb830]/10 px-1.5 py-0.5 text-[10px] font-mono uppercase tracking-wider text-[#ffb830]"
+                            title="Smoke run — excluded from dashboard stats"
+                          >
+                            smoke
+                          </span>
+                        ) : null}
                       </td>
-                      <td className="py-2 pr-4">
+                      <td>
                         <CampaignStatusBadge status={c.status} />
                       </td>
-                      <td className="py-2 pr-4 tabular-nums">
+                      <td className={styles.dataMono}>
                         ${Number(c.budget_usd).toFixed(2)}
                       </td>
-                      <td className="py-2 pr-4 tabular-nums">
+                      <td className={styles.dataMono}>
                         ${Number(c.spent_usd).toFixed(2)}
                       </td>
-                      <td className="py-2 pr-4 text-xs text-muted-foreground">
+                      <td className={`${styles.dataMono} ${styles.dataMuted}`}>
                         {new Date(c.created_at).toLocaleString()}
                       </td>
-                      <td className="py-2">
+                      <td>
                         <Link
                           href={`/campaigns/${c.id}`}
-                          className="text-xs text-blue-700 hover:underline"
+                          className={styles.dataLink}
                         >
                           View →
                         </Link>
@@ -83,18 +115,18 @@ export default async function CampaignsPage() {
               </table>
             </div>
           )}
-        </CardContent>
-      </Card>
-    </AppShell>
+        </div>
+      </div>
+    </ThemedShell>
   );
 }
 
 function DbError({ error }: { error: unknown }) {
   const message = error instanceof Error ? error.message : String(error);
   return (
-    <div className="rounded-lg border border-dashed border-amber-400 bg-amber-50 px-6 py-4 text-sm text-amber-900">
-      <p className="font-medium">Database unreachable</p>
-      <p className="mt-1 text-xs">{message}</p>
+    <div className={styles.dbError}>
+      <div className={styles.dbErrorTitle}>Database unreachable</div>
+      <div className={styles.dbErrorBody}>{message}</div>
     </div>
   );
 }

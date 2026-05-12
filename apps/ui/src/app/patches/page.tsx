@@ -1,12 +1,11 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getSession } from "@/lib/auth/session";
-import { AppShell } from "@/components/app-shell";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { ThemedShell } from "@/components/themed-shell";
 import { PatchStatusBadge } from "@/components/badges";
 import { listPatches } from "@/lib/db/queries";
 import { reviewPatchAction } from "./actions";
+import styles from "@/app/dashboard.module.css";
 
 export const dynamic = "force-dynamic";
 
@@ -19,9 +18,9 @@ export default async function PatchesPage() {
     patches = await listPatches();
   } catch (err) {
     return (
-      <AppShell>
+      <ThemedShell eyebrow="// Patches" title="Patches">
         <DbError error={err} />
-      </AppShell>
+      </ThemedShell>
     );
   }
 
@@ -29,129 +28,159 @@ export default async function PatchesPage() {
   const resolved = patches.filter((p) => p.status !== "awaiting_human_review");
 
   return (
-    <AppShell>
-      <div className="space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Pending review ({pending.length})</CardTitle>
-            <p className="text-xs text-muted-foreground">
-              Merge happens on GitHub. The buttons below mark the patch row in
-              Postgres after you act on the PR. Merging the PR on GitHub also
-              flips this row via the webhook.
-            </p>
-          </CardHeader>
-          <CardContent>
+    <ThemedShell
+      eyebrow="// Patches"
+      title="Patches"
+      meta={
+        <>
+          <span>{patches.length} TOTAL</span>
+          <span className={styles.heroSubDivider} />
+          <span style={{ color: "var(--sb-warn)" }}>
+            {pending.length} PENDING REVIEW
+          </span>
+          <span className={styles.heroSubDivider} />
+          <span>{resolved.length} CLOSED</span>
+        </>
+      }
+    >
+      <div className={styles.panelStack}>
+        <div className={styles.panel}>
+          <div className={styles.panelHeader}>
+            <div className={styles.panelHeaderLeft}>
+              <div className={`${styles.panelTitle} ${styles.panelTitleAlert}`}>
+                Pending Review
+                <span className={styles.panelCount}>({pending.length})</span>
+              </div>
+              <div className={styles.panelSubtitle}>
+                Merge happens on GitHub. The buttons below mark the patch row
+                in Postgres after you act on the PR. Merging the PR on GitHub
+                also flips this row via the webhook.
+              </div>
+            </div>
+          </div>
+          <div className={styles.panelBody}>
             {pending.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
+              <div className={styles.panelEmpty}>
                 No patches awaiting review.
-              </p>
+              </div>
             ) : (
-              <ul className="space-y-3">
+              <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
                 {pending.map((p) => (
-                  <li
-                    key={p.id}
-                    className="flex flex-col gap-2 rounded border p-3 sm:flex-row sm:items-center sm:justify-between"
-                  >
-                    <div className="space-y-1 text-sm">
-                      <div className="flex items-center gap-2">
+                  <li key={p.id} className={styles.reviewItem}>
+                    <div>
+                      <div className={styles.reviewItemHead}>
                         <a
                           href={p.pr_url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="font-medium text-blue-700 hover:underline"
+                          className={styles.reviewBranch}
                         >
                           {p.branch_name}
                         </a>
                         <PatchStatusBadge status={p.status} />
                       </div>
-                      {p.vuln_id !== null && (
-                        <Link
-                          href={`/vulnerabilities/${p.vulnerability_id}`}
-                          className="text-xs text-muted-foreground hover:underline"
-                        >
-                          {p.vuln_id}
-                        </Link>
-                      )}
-                      <p className="text-xs text-muted-foreground">
-                        Opened {new Date(p.created_at).toLocaleString()}
-                      </p>
+                      <div className={styles.reviewMeta}>
+                        {p.vuln_id !== null && (
+                          <Link
+                            href={`/vulnerabilities/${p.vulnerability_id}`}
+                            className={styles.dataLink}
+                            style={{ fontFamily: "DM Mono, monospace" }}
+                          >
+                            {p.vuln_id}
+                          </Link>
+                        )}
+                        <span>
+                          Opened {new Date(p.created_at).toLocaleString()}
+                        </span>
+                      </div>
                     </div>
-                    <div className="flex gap-2">
+                    <div className={styles.reviewActions}>
                       <form action={reviewPatchAction}>
                         <input type="hidden" name="id" value={p.id} />
                         <input type="hidden" name="decision" value="merged" />
-                        <Button type="submit" size="sm">
+                        <button
+                          type="submit"
+                          className={`${styles.btn} ${styles.btnPrimary}`}
+                        >
                           Mark merged
-                        </Button>
+                        </button>
                       </form>
                       <form action={reviewPatchAction}>
                         <input type="hidden" name="id" value={p.id} />
                         <input type="hidden" name="decision" value="rejected" />
-                        <Button type="submit" size="sm" variant="outline">
+                        <button
+                          type="submit"
+                          className={`${styles.btn} ${styles.btnDanger}`}
+                        >
                           Reject
-                        </Button>
+                        </button>
                       </form>
                       <form action={reviewPatchAction}>
                         <input type="hidden" name="id" value={p.id} />
-                        <input type="hidden" name="decision" value="ci_failed" />
-                        <Button type="submit" size="sm" variant="outline">
+                        <input
+                          type="hidden"
+                          name="decision"
+                          value="ci_failed"
+                        />
+                        <button type="submit" className={styles.btn}>
                           CI failed
-                        </Button>
+                        </button>
                       </form>
                     </div>
                   </li>
                 ))}
               </ul>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">
-              Closed ({resolved.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+        <div className={styles.panel}>
+          <div className={styles.panelHeader}>
+            <div className={styles.panelHeaderLeft}>
+              <div className={styles.panelTitle}>
+                Closed
+                <span className={styles.panelCount}>({resolved.length})</span>
+              </div>
+            </div>
+          </div>
+          <div className={styles.panelBody}>
             {resolved.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No closed patches yet.
-              </p>
+              <div className={styles.panelEmpty}>No closed patches yet.</div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+              <div style={{ overflowX: "auto" }}>
+                <table className={styles.dataTable}>
                   <thead>
-                    <tr className="border-b text-left text-xs text-muted-foreground">
-                      <th className="py-2 pr-4">Branch</th>
-                      <th className="py-2 pr-4">Vuln</th>
-                      <th className="py-2 pr-4">Status</th>
-                      <th className="py-2 pr-4">Opened</th>
-                      <th className="py-2">Merged</th>
+                    <tr>
+                      <th>Branch</th>
+                      <th>Vuln</th>
+                      <th>Status</th>
+                      <th>Opened</th>
+                      <th>Merged</th>
                     </tr>
                   </thead>
                   <tbody>
                     {resolved.map((p) => (
-                      <tr key={p.id} className="border-b last:border-0">
-                        <td className="py-2 pr-4">
+                      <tr key={p.id}>
+                        <td>
                           <a
                             href={p.pr_url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-blue-700 hover:underline"
+                            className={`${styles.dataLink} ${styles.dataMono}`}
                           >
                             {p.branch_name}
                           </a>
                         </td>
-                        <td className="py-2 pr-4 text-xs">
+                        <td className={`${styles.dataMono} ${styles.dataMuted}`}>
                           {p.vuln_id ?? "—"}
                         </td>
-                        <td className="py-2 pr-4">
+                        <td>
                           <PatchStatusBadge status={p.status} />
                         </td>
-                        <td className="py-2 pr-4 text-xs text-muted-foreground">
+                        <td className={`${styles.dataMono} ${styles.dataMuted}`}>
                           {new Date(p.created_at).toLocaleString()}
                         </td>
-                        <td className="py-2 text-xs text-muted-foreground">
+                        <td className={`${styles.dataMono} ${styles.dataMuted}`}>
                           {p.merged_at
                             ? new Date(p.merged_at).toLocaleString()
                             : "—"}
@@ -162,19 +191,19 @@ export default async function PatchesPage() {
                 </table>
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
-    </AppShell>
+    </ThemedShell>
   );
 }
 
 function DbError({ error }: { error: unknown }) {
   const message = error instanceof Error ? error.message : String(error);
   return (
-    <div className="rounded-lg border border-dashed border-amber-400 bg-amber-50 px-6 py-4 text-sm text-amber-900">
-      <p className="font-medium">Database unreachable</p>
-      <p className="mt-1 text-xs">{message}</p>
+    <div className={styles.dbError}>
+      <div className={styles.dbErrorTitle}>Database unreachable</div>
+      <div className={styles.dbErrorBody}>{message}</div>
     </div>
   );
 }

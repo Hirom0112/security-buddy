@@ -27,10 +27,13 @@ export type CampaignStatus =
   | "budget_exhausted"
   | "no_candidates";
 
+export type CampaignMode = "live" | "smoke";
+
 export interface Campaign {
   id: string;
   target_subcategory: string | null;
   status: CampaignStatus;
+  mode: CampaignMode;
   budget_usd: string; // decimal as string
   spent_usd: string;
   created_at: string;

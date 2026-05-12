@@ -1,10 +1,10 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getSession } from "@/lib/auth/session";
-import { AppShell } from "@/components/app-shell";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ThemedShell } from "@/components/themed-shell";
 import { SeverityBadge, VulnStatusBadge } from "@/components/badges";
 import { listVulnerabilities } from "@/lib/db/queries";
+import styles from "@/app/dashboard.module.css";
 
 export const dynamic = "force-dynamic";
 
@@ -17,51 +17,80 @@ export default async function VulnerabilitiesPage() {
     vulns = await listVulnerabilities();
   } catch (err) {
     return (
-      <AppShell>
+      <ThemedShell eyebrow="// Findings" title="Vulnerabilities">
         <DbError error={err} />
-      </AppShell>
+      </ThemedShell>
     );
   }
 
   const drafts = vulns.filter((v) => v.status === "draft");
   const rest = vulns.filter((v) => v.status !== "draft");
+  const openCount = vulns.filter(
+    (v) => v.status === "open" || v.status === "draft",
+  ).length;
 
   return (
-    <AppShell>
-      <div className="space-y-6">
+    <ThemedShell
+      eyebrow="// Findings"
+      title="Vulnerabilities"
+      meta={
+        <>
+          <span>{vulns.length} TOTAL</span>
+          <span className={styles.heroSubDivider} />
+          <span className={styles.sectionMetaActive}>{openCount} OPEN</span>
+          {drafts.length > 0 ? (
+            <>
+              <span className={styles.heroSubDivider} />
+              <span style={{ color: "var(--sb-warn)" }}>
+                {drafts.length} AWAITING DECISION
+              </span>
+            </>
+          ) : null}
+        </>
+      }
+    >
+      <div className={styles.panelStack}>
         {drafts.length > 0 && (
-          <Card className="border-amber-300">
-            <CardHeader>
-              <CardTitle className="text-base">
-                Awaiting your decision ({drafts.length})
-              </CardTitle>
-              <p className="text-xs text-muted-foreground">
-                Critical-severity findings stay in <code>draft</code> until the
-                operator confirms. Confirming opens the Patch Agent workflow.
-              </p>
-            </CardHeader>
-            <CardContent>
+          <div className={styles.panel}>
+            <div className={styles.panelHeader}>
+              <div className={styles.panelHeaderLeft}>
+                <div
+                  className={`${styles.panelTitle} ${styles.panelTitleAlert}`}
+                >
+                  Awaiting Your Decision
+                  <span className={styles.panelCount}>({drafts.length})</span>
+                </div>
+                <div className={styles.panelSubtitle}>
+                  Critical-severity findings stay in <code>draft</code> until
+                  the operator confirms. Confirming opens the Patch Agent
+                  workflow.
+                </div>
+              </div>
+            </div>
+            <div className={styles.panelBody}>
               <VulnTable rows={drafts} />
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         )}
 
-        <Card>
-          <CardHeader>
-            <CardTitle>All vulnerabilities</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <div className={styles.panel}>
+          <div className={styles.panelHeader}>
+            <div className={styles.panelHeaderLeft}>
+              <div className={styles.panelTitle}>All Vulnerabilities</div>
+            </div>
+          </div>
+          <div className={styles.panelBody}>
             {rest.length === 0 && drafts.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
+              <div className={styles.panelEmpty}>
                 No vulnerabilities recorded yet.
-              </p>
+              </div>
             ) : (
               <VulnTable rows={rest} />
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
-    </AppShell>
+    </ThemedShell>
   );
 }
 
@@ -71,43 +100,43 @@ function VulnTable({
   rows: Awaited<ReturnType<typeof listVulnerabilities>>;
 }) {
   if (rows.length === 0) {
-    return (
-      <p className="text-sm text-muted-foreground">No matching findings.</p>
-    );
+    return <div className={styles.panelEmpty}>No matching findings.</div>;
   }
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
+    <div style={{ overflowX: "auto" }}>
+      <table className={styles.dataTable}>
         <thead>
-          <tr className="border-b text-left text-xs text-muted-foreground">
-            <th className="py-2 pr-4">ID</th>
-            <th className="py-2 pr-4">Title</th>
-            <th className="py-2 pr-4">Severity</th>
-            <th className="py-2 pr-4">Status</th>
-            <th className="py-2 pr-4">OWASP</th>
-            <th className="py-2">Reported</th>
+          <tr>
+            <th>ID</th>
+            <th>Title</th>
+            <th>Severity</th>
+            <th>Status</th>
+            <th>OWASP</th>
+            <th>Reported</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((v) => (
-            <tr key={v.id} className="border-b last:border-0">
-              <td className="py-2 pr-4 font-mono text-xs">
+            <tr key={v.id}>
+              <td className={styles.dataMono}>
                 <Link
                   href={`/vulnerabilities/${v.id}`}
-                  className="text-blue-700 hover:underline"
+                  className={styles.dataLink}
                 >
                   {v.vuln_id}
                 </Link>
               </td>
-              <td className="py-2 pr-4 max-w-md truncate">{v.title}</td>
-              <td className="py-2 pr-4">
+              <td className={styles.dataTruncate}>{v.title}</td>
+              <td>
                 <SeverityBadge severity={v.severity} />
               </td>
-              <td className="py-2 pr-4">
+              <td>
                 <VulnStatusBadge status={v.status} />
               </td>
-              <td className="py-2 pr-4 text-xs">{v.owasp_llm_id}</td>
-              <td className="py-2 text-xs text-muted-foreground">
+              <td className={`${styles.dataMono} ${styles.dataMuted}`}>
+                {v.owasp_llm_id}
+              </td>
+              <td className={`${styles.dataMono} ${styles.dataMuted}`}>
                 {new Date(v.created_at).toLocaleString()}
               </td>
             </tr>
@@ -121,9 +150,9 @@ function VulnTable({
 function DbError({ error }: { error: unknown }) {
   const message = error instanceof Error ? error.message : String(error);
   return (
-    <div className="rounded-lg border border-dashed border-amber-400 bg-amber-50 px-6 py-4 text-sm text-amber-900">
-      <p className="font-medium">Database unreachable</p>
-      <p className="mt-1 text-xs">{message}</p>
+    <div className={styles.dbError}>
+      <div className={styles.dbErrorTitle}>Database unreachable</div>
+      <div className={styles.dbErrorBody}>{message}</div>
     </div>
   );
 }
