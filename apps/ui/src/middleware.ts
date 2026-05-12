@@ -49,10 +49,35 @@ export function middleware(request: NextRequest): NextResponse {
     return NextResponse.redirect(dashboardUrl);
   }
 
-  return NextResponse.next();
+  const response = NextResponse.next();
+
+  // Issue the single-use CSRF cookie when an unauthenticated visitor lands on
+  // /login. Server components in Next 15 can't write cookies during render,
+  // so middleware (Edge runtime) is the right place. Web Crypto only.
+  if (pathname === "/login" && !isAuthenticated) {
+    const existing = request.cookies.get("sb_csrf")?.value;
+    if (existing === undefined || existing.length < 32) {
+      const bytes = new Uint8Array(32);
+      crypto.getRandomValues(bytes);
+      const token = Array.from(bytes, (b) =>
+        b.toString(16).padStart(2, "0")
+      ).join("");
+      response.cookies.set("sb_csrf", token, {
+        httpOnly: true,
+        secure: process.env["NODE_ENV"] === "production",
+        sameSite: "strict",
+        path: "/login",
+        maxAge: 60 * 10,
+      });
+      response.headers.set("x-sb-csrf", token);
+    }
+  }
+
+  return response;
 }
 
 export const config = {
+  runtime: "nodejs",
   matcher: [
     /*
      * Match all request paths except those starting with:

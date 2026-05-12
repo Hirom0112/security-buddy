@@ -28,15 +28,19 @@ export async function listCampaigns(limit = 50): Promise<Campaign[]> {
   const sql = getSql();
   const rows = await sql<Campaign[]>`
     SELECT
-      id::text,
-      target_subcategory,
-      status,
-      budget_usd::text,
-      spent_usd::text,
-      created_at,
-      completed_at
-    FROM campaigns
-    ORDER BY created_at DESC
+      c.id::text,
+      c.target_subcategory,
+      c.status,
+      c.mode,
+      c.budget_usd::text,
+      COALESCE(
+        (SELECT SUM(at.cost_usd) FROM agent_traces at WHERE at.campaign_id = c.id),
+        0
+      )::text AS spent_usd,
+      c.created_at,
+      c.completed_at
+    FROM campaigns c
+    ORDER BY c.created_at DESC
     LIMIT ${limit}
   `;
   return rows;
@@ -46,15 +50,19 @@ export async function getCampaign(id: string): Promise<Campaign | null> {
   const sql = getSql();
   const rows = await sql<Campaign[]>`
     SELECT
-      id::text,
-      target_subcategory,
-      status,
-      budget_usd::text,
-      spent_usd::text,
-      created_at,
-      completed_at
-    FROM campaigns
-    WHERE id = ${id}::uuid
+      c.id::text,
+      c.target_subcategory,
+      c.status,
+      c.mode,
+      c.budget_usd::text,
+      COALESCE(
+        (SELECT SUM(at.cost_usd) FROM agent_traces at WHERE at.campaign_id = c.id),
+        0
+      )::text AS spent_usd,
+      c.created_at,
+      c.completed_at
+    FROM campaigns c
+    WHERE c.id = ${id}::uuid
     LIMIT 1
   `;
   return rows[0] ?? null;
@@ -229,6 +237,7 @@ export async function listPatchesForVulnerability(
 // ---------------------------------------------------------------------------
 
 export async function coverageSnapshot(): Promise<CoverageRow[]> {
+  // Dashboard counts only LIVE campaigns; smoke runs are excluded.
   const sql = getSql();
   return sql<CoverageRow[]>`
     SELECT
@@ -247,7 +256,9 @@ export async function coverageSnapshot(): Promise<CoverageRow[]> {
         COUNT(v.id) FILTER (WHERE v.verdict = 'partial')         AS partials,
         MAX(a.created_at)                                        AS last_attempted_at
       FROM attacks a
+      JOIN campaigns c    ON c.id = a.campaign_id
       LEFT JOIN verdicts v ON v.attack_id = a.id
+      WHERE c.mode = 'live'
       GROUP BY a.subcategory
     ) stats ON stats.subcategory = t.subcategory
     ORDER BY t.category, t.subcategory
@@ -260,7 +271,12 @@ export async function dashboardSummary(): Promise<DashboardSummary> {
   const [coverage] = await sql<{ total: number; covered: number }[]>`
     SELECT
       (SELECT COUNT(*)::int FROM attack_taxonomy) AS total,
-      (SELECT COUNT(DISTINCT a.subcategory)::int FROM attacks a) AS covered
+      (
+        SELECT COUNT(DISTINCT a.subcategory)::int
+        FROM attacks a
+        JOIN campaigns c ON c.id = a.campaign_id
+        WHERE c.mode = 'live'
+      ) AS covered
   `;
 
   const sevRows = await sql<
@@ -287,12 +303,14 @@ export async function dashboardSummary(): Promise<DashboardSummary> {
 
   const [cost] = await sql<{ total: string; last_24h: string }[]>`
     SELECT
-      COALESCE(SUM(cost_usd), 0)::text AS total,
+      COALESCE(SUM(at.cost_usd), 0)::text AS total,
       COALESCE(
-        SUM(cost_usd) FILTER (WHERE created_at > now() - INTERVAL '24 hours'),
+        SUM(at.cost_usd) FILTER (WHERE at.started_at > now() - INTERVAL '24 hours'),
         0
       )::text AS last_24h
-    FROM agent_traces
+    FROM agent_traces at
+    JOIN campaigns c ON c.id = at.campaign_id
+    WHERE c.mode = 'live'
   `;
 
   return {

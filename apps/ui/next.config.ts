@@ -29,6 +29,9 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  experimental: {
+    nodeMiddleware: true,
+  },
   async headers() {
     return [
       {
