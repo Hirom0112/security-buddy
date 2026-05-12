@@ -8,8 +8,8 @@ patches row.
 A separate index on branch_name accelerates the webhook lookup that maps
 a merged PR's head branch back to its patches row (Slice 6 wires this).
 
-Revision ID: 0005_patches_indexes
-Revises: 0004_seed_target_manifest
+Revision ID: 0005
+Revises: 0004
 Create Date: 2026-05-12
 """
 
@@ -17,8 +17,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0005_patches_indexes"
-down_revision: str | None = "0004_seed_target_manifest"
+revision: str = "0005"
+down_revision: str | None = "0004"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
