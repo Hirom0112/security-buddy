@@ -85,10 +85,14 @@ the substrate every later slice depends on.
       (app/db/redis = ok; langsmith = unconfigured until key provided)
 - [x] CI passes on a fresh branch (workflow run 25710608370 green —
       API + UI jobs both clean on the f4cc175 commit)
-- [ ] Both services deployed to Railway as a single project with two
-      services (api + ui). URLs documented in README.
-      (Railway project provisioned; service deploy deferred — needs
-      OPENROUTER_API_KEY and LANGSMITH_API_KEY from operator)
+- [x] Both services deployed to Railway as a single project (two services
+      api + ui, plus a separate worker service for arq). URLs documented
+      in README:
+      - UI:     https://security-buddy-production.up.railway.app
+      - API:    https://security-buddy-api-production.up.railway.app
+      - Worker: internal only (no public domain)
+      Postgres + Redis are managed Railway plugins (`security-buddy-db`,
+      `security-buddy-queue`). `/healthz` green on 2026-05-12.
 - [x] `CLAUDE.md`, `ARCHITECTURE.md`, `THREAT_MODEL.md`, `USERS.md` all
       checked into `docs/` (already drafted, just placed)
 

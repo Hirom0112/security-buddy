@@ -13,6 +13,10 @@ current slice.
 
 ## For Graders — Submission Requirements Map
 
+> **All graded documents live in [`docs/`](docs/).** Threat model, architecture,
+> users, target manifest, plan, cost analysis, and vulnerability findings are
+> all under that single directory. Direct links below.
+
 Every required deliverable, with the exact path. Items marked *(in progress)*
 are scheduled in [`docs/PLAN.md`](docs/PLAN.md) and will land before final
 submission.
@@ -25,8 +29,8 @@ submission.
 | **Architecture Doc** (~500 word summary + diagram + agents + regression harness + observability + tradeoffs) | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
 | **Target Manifest** (the target's contract — endpoints, auth, trust boundaries, expected safe behaviors; consumed by Red Team and Judge) | [`docs/TARGET_MANIFEST.md`](docs/TARGET_MANIFEST.md) |
 | **Demo Video** (3–5 min, live attacks against the target) | *(in progress — Slice 8)* — link will appear here |
-| **Eval Dataset** (≥3 attack categories, reproducible) | `evals/` *(in progress — Slice 2 seeds ground truth, Slice 8 finalizes)* |
-| **Vulnerability Reports** (≥3, professional format) | `docs/findings/` *(in progress — Slice 4 produces, Slice 8 curates)* |
+| **Eval Dataset** (≥3 attack categories, reproducible) | [`apps/api/tests/evals/`](apps/api/tests/evals/) — ground-truth sets + runners. Baselines tracked in [`docs/EVAL_BASELINES.md`](docs/EVAL_BASELINES.md). |
+| **Vulnerability Reports** (≥3, professional format) | [`docs/findings/`](docs/findings/) *(in progress — Slice 4 produces, Slice 8 curates)* |
 | **AI Cost Analysis** (dev spend + projections at 100/1K/10K/100K runs) | `docs/COST_ANALYSIS.md` *(in progress — Slice 8)* |
 | **Deployed Application** (publicly accessible target, platform running live tests) | URLs below once deployed (Slice 0 + 1) |
 | **Social Post** (final submission only) | *(in progress — Slice 8)* |
@@ -208,13 +212,15 @@ security_buddy/
 │   ├── ARCHITECTURE.md        ← multi-agent design, trust boundaries, tradeoffs
 │   ├── THREAT_MODEL.md        ← OWASP LLM / MITRE ATLAS / HIPAA taxonomy
 │   ├── USERS.md               ← three personas, automation justification
+│   ├── TARGET_MANIFEST.md     ← target contract consumed by Red Team + Judge
 │   ├── PLAN.md                ← slice-by-slice build plan
+│   ├── EVAL_BASELINES.md      ← baselined accuracy for every LLM component
 │   ├── COST_ANALYSIS.md       ← (Slice 8) real spend + scale projections
 │   └── findings/              ← (Slice 4+) vulnerability reports
 ├── apps/
 │   ├── api/                   ← FastAPI + LangGraph + arq workers
+│   │   └── tests/evals/       ← ground-truth eval sets + runners
 │   └── ui/                    ← Next.js 15 operator console
-├── evals/                     ← (Slice 2+) adversarial eval datasets
 ├── docker-compose.yml         ← Postgres 16 + Redis 7
 └── .github/workflows/         ← CI (ruff, mypy, import-linter, pytest)
 ```
@@ -226,14 +232,14 @@ security_buddy/
 Tracked in [`docs/PLAN.md`](docs/PLAN.md). Each slice is vertical
 (schema → backend → UI → tests → docs) and merged one at a time.
 
-- [ ] **Slice 0** — Foundation: monorepo, schema, `llm_client`, health endpoint
-- [ ] **Slice 1** — Red Team Agent running live against the target
-- [ ] **Slice 2** — Judge Agent + ground-truth eval baseline
-- [ ] **Slice 3** — Orchestrator with priority function and budget enforcement
-- [ ] **Slice 4** — Documentation Agent with framework citations
-- [ ] **Slice 5** — Patch Agent + GitHub integration + branch protection
-- [ ] **Slice 6** — Regression Harness (replay-N, frozen rubrics, cross-category)
-- [ ] **Slice 7** — Security Buddy UI: dashboard, before/after diff, PR queue
+- [x] **Slice 0** — Foundation: monorepo, schema, `llm_client`, health endpoint *(Railway deploy pending operator keys)*
+- [x] **Slice 1** — Red Team Agent running live against the target
+- [~] **Slice 2** — Judge Agent + ground-truth eval baseline *(runner + ground-truth in; first baseline run pending)*
+- [x] **Slice 3** — Orchestrator with priority function and budget enforcement
+- [x] **Slice 4** — Documentation Agent with framework citations
+- [x] **Slice 5** — Patch Agent + GitHub integration + branch protection
+- [x] **Slice 6** — Regression Harness (replay-N, frozen rubrics, cross-category)
+- [x] **Slice 7** — Security Buddy UI: dashboard, before/after diff, PR queue
 - [ ] **Slice 8** — Cost analysis, observability dashboards, demo video
 
 ---

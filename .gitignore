@@ -24,3 +24,5 @@ build/
 *.log
 .vscode/
 .idea/
+TODO.md
+.claude/
