@@ -29,7 +29,7 @@ if config.config_file_name is not None:
 # Inject the database URL at runtime from Pydantic settings.
 # This overrides the (absent) sqlalchemy.url in alembic.ini.
 settings = get_settings()
-config.set_main_option("sqlalchemy.url", settings.database_url)
+config.set_main_option("sqlalchemy.url", settings.database_url.get_secret_value())
 
 # target_metadata is None because we rely on raw Alembic ops (op.create_table,
 # op.add_column, etc.) in each migration rather than autogenerate from models.

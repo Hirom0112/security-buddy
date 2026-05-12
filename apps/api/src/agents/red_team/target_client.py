@@ -200,11 +200,13 @@ class TargetClient:
             outcome="started",
         )
 
-        # Step 1: PHP login.
-        phpsessid = await self._step1_php_login()
+        # Step 1: PHP login (returns the full session cookie jar — OpenEMR
+        # actually issues a cookie named `OpenEMR`, not `PHPSESSID` as the
+        # manifest stated; pass forward whatever the server sets).
+        session_cookies = await self._step1_php_login()
 
         # Step 2: Extract JWT from the module page.
-        await self._step2_extract_jwt(phpsessid)
+        await self._step2_extract_jwt(session_cookies)
 
         log_event(
             "target_jwt_extracted",
@@ -214,8 +216,14 @@ class TargetClient:
             # NEVER log the JWT itself — only metadata.
         )
 
-    async def _step1_php_login(self) -> str:
-        """POST OpenEMR login form. Returns the PHPSESSID cookie value."""
+    async def _step1_php_login(self) -> dict[str, str]:
+        """POST OpenEMR login form. Returns the session cookie jar.
+
+        OpenEMR's response sets a session cookie (observed name: `OpenEMR`,
+        though older versions used `PHPSESSID`). We propagate every cookie
+        from the response rather than picking by name — this is robust to
+        version drift and matches what a real browser would do.
+        """
         http = self._require_http()
         login_url = f"{self._openemr_url}/interface/main/main_screen.php?auth=login&site=default"
         body = {
@@ -265,41 +273,40 @@ class TargetClient:
                 "(credentials rejected or CSRF mismatch)"
             )
 
-        # Extract PHPSESSID from cookies.
-        phpsessid = resp.cookies.get("PHPSESSID")
-        if not phpsessid:
-            # Some redirects may carry the cookie in a different jar entry.
-            for name, value in resp.cookies.items():
-                if name.upper() == "PHPSESSID":
-                    phpsessid = value
-                    break
+        # Capture every cookie the server set on this response.
+        session_cookies = {name: value for name, value in resp.cookies.items()}
 
-        if not phpsessid:
+        if not session_cookies:
             log_event(
                 "target_login_attempt",
                 host=self._openemr_url,
                 outcome="missing_cookie",
                 status_code=resp.status_code,
             )
-            raise TargetAuthError("OpenEMR login appeared to succeed but no PHPSESSID cookie found")
+            raise TargetAuthError(
+                "OpenEMR login appeared to succeed but no session cookie was issued"
+            )
 
         log_event(
             "target_login_attempt",
             host=self._openemr_url,
             outcome="success",
             status_code=resp.status_code,
+            cookie_names=sorted(session_cookies.keys()),
         )
-        return phpsessid
+        return session_cookies
 
-    async def _step2_extract_jwt(self, phpsessid: str) -> None:
-        """GET the module page, parse the copilot-config JSON blob."""
+    async def _step2_extract_jwt(self, session_cookies: dict[str, str]) -> None:
+        """GET the module page with the login session cookies, parse the
+        copilot-config JSON blob.
+        """
         http = self._require_http()
         module_url = f"{self._openemr_url}{self._module_path}"
 
         try:
             resp = await http.get(
                 module_url,
-                cookies={"PHPSESSID": phpsessid},
+                cookies=session_cookies,
             )
         except (httpx.ConnectError, httpx.TimeoutException, httpx.NetworkError) as exc:
             raise TargetUnavailableError(f"Module page unreachable: {type(exc).__name__}") from exc
