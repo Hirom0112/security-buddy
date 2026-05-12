@@ -45,9 +45,9 @@ class LLMClient:
     """
 
     def __init__(self, settings: Settings) -> None:
-        self._api_key = settings.openrouter_api_key
+        self._api_key = settings.openrouter_api_key.get_secret_value()
         self._langsmith_disabled = settings.langsmith_disabled
-        self._langsmith_api_key = settings.langsmith_api_key
+        self._langsmith_api_key = settings.langsmith_api_key.get_secret_value()
         self._langsmith_project = settings.langsmith_project
 
     async def complete(

@@ -43,7 +43,9 @@ async def _check_db() -> SubsystemStatus:
     """Attempt a SELECT 1 against Postgres."""
     try:
         settings = get_settings()
-        engine = create_async_engine(settings.database_url, pool_size=1, max_overflow=0)
+        engine = create_async_engine(
+            settings.database_url.get_secret_value(), pool_size=1, max_overflow=0
+        )
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
         await engine.dispose()

@@ -18,7 +18,7 @@ def create_engine(settings: Settings) -> AsyncEngine:
     Connection pool is sized conservatively for a single-service deployment.
     """
     return create_async_engine(
-        settings.database_url,
+        settings.database_url.get_secret_value(),
         pool_size=10,
         max_overflow=20,
         pool_pre_ping=True,
