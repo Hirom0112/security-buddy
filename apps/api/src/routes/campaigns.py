@@ -32,7 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker  # noqa: TC0
 from src.observability.context import get_request_id
 from src.observability.events import log_event
 from src.repositories.campaigns import CampaignRepository
-from src.workers.queue import enqueue_red_team_execute
+from src.workers.queue import enqueue_orchestrator_tick, enqueue_red_team_execute
 
 router = APIRouter(prefix="/api/v1", tags=["campaigns"])
 
@@ -211,6 +211,77 @@ async def create_campaign(
     return CreateCampaignResponse(
         campaign_id=campaign.id,
         brief_id=brief.id,
+        status="pending",
+        enqueued_at=enqueued_at,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Orchestrator-driven start (Slice 3)
+# ---------------------------------------------------------------------------
+
+
+class StartCampaignRequest(BaseModel):
+    """Validated body for POST /api/v1/campaigns/start.
+
+    No target_subcategory: the Orchestrator's priority function picks one.
+    The operator only controls the budget envelope; everything else is
+    coverage-driven.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    budget_usd: Decimal = Field(..., gt=Decimal("0"), le=Decimal("100"))
+
+
+class StartCampaignResponse(BaseModel):
+    """202 Accepted response — orchestrator job is queued but not yet run."""
+
+    campaign_id: UUID
+    status: str
+    enqueued_at: datetime
+
+
+@router.post(
+    "/campaigns/start",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=StartCampaignResponse,
+    summary="Create an empty campaign and let the Orchestrator pick the subcategory",
+    description=(
+        "Slice 3 entry point. Creates a pending campaign with no "
+        "target_subcategory, enqueues orchestrator.tick(campaign_id). The "
+        "Orchestrator's priority function selects the subcategory, the LLM "
+        "frames the brief (with deterministic fallback), and the Red Team "
+        "job is enqueued from the orchestrator worker."
+    ),
+)
+async def start_campaign(
+    body: StartCampaignRequest,
+    _operator: Annotated[_OperatorIdentity, Depends(require_session)],
+    db: Annotated[AsyncSession, Depends(_get_db_session)],
+) -> Any:
+    campaign_repo = CampaignRepository()
+    campaign = await campaign_repo.create(
+        db,
+        target_subcategory=None,
+        budget_usd=body.budget_usd,
+    )
+
+    # Session commit happens in _get_db_session on exit.
+
+    request_id = get_request_id() or ""
+    await enqueue_orchestrator_tick(campaign.id, request_id)
+    enqueued_at = datetime.now(UTC)
+
+    log_event(
+        "campaign_start_enqueued",
+        campaign_id=str(campaign.id),
+        budget_usd=float(body.budget_usd),
+        outcome="enqueued",
+    )
+
+    return StartCampaignResponse(
+        campaign_id=campaign.id,
         status="pending",
         enqueued_at=enqueued_at,
     )

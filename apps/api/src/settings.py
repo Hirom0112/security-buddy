@@ -71,6 +71,13 @@ class Settings(BaseSettings):
         default=None,
         description="GitHub PAT scoped to the OpenEMR fork only (repo scope)",
     )
+    github_webhook_secret: SecretStr | None = Field(
+        default=None,
+        description=(
+            "Shared secret for the GitHub merge webhook (HMAC SHA-256). "
+            "When None, the webhook route refuses all deliveries — fail-closed."
+        ),
+    )
 
     @property
     def langsmith_disabled(self) -> bool:

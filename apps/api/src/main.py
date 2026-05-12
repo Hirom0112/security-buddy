@@ -30,6 +30,7 @@ from src.domain.errors import DomainError
 from src.observability.middleware import RequestIdMiddleware
 from src.routes.campaigns import router as campaigns_router
 from src.routes.health import router as health_router
+from src.routes.webhooks import router as webhooks_router
 from src.settings import Settings, get_settings
 
 # ---------------------------------------------------------------------------
@@ -178,6 +179,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 
 app.include_router(health_router)
 app.include_router(campaigns_router)
+app.include_router(webhooks_router)
 
 # Prometheus metrics endpoint (no auth — monitoring infrastructure needs it)
 metrics_app = make_asgi_app()

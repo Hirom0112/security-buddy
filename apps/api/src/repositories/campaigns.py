@@ -33,11 +33,16 @@ class CampaignRepository:
         self,
         session: AsyncSession,
         *,
-        target_subcategory: str,
+        target_subcategory: str | None,
         budget_usd: Decimal,
         target_version_id: UUID | None = None,
     ) -> Campaign:
         """Insert a new campaign row with status='pending'.
+
+        target_subcategory may be None for empty-start campaigns where the
+        Orchestrator picks the subcategory on first tick (Slice 3). For
+        manual-trigger campaigns (Slice 1 flow) it must be a valid
+        attack_taxonomy.subcategory string.
 
         Returns the newly created Campaign entity.
         """
@@ -116,6 +121,51 @@ class CampaignRepository:
             return Campaign.model_validate(dict(row))
 
         # Determine whether it's a not-found or a version conflict.
+        check = await session.execute(
+            sa.text("SELECT version_id FROM campaigns WHERE id = :id"),
+            {"id": str(campaign_id)},
+        )
+        existing = check.mappings().first()
+        if existing is None:
+            raise NotFoundError(f"Campaign {campaign_id} not found")
+        raise ConflictError(
+            f"Campaign {campaign_id} version mismatch: "
+            f"expected {expected_version_id}, found {existing['version_id']}"
+        )
+
+    async def set_target_subcategory(
+        self,
+        session: AsyncSession,
+        *,
+        campaign_id: UUID,
+        target_subcategory: str,
+        expected_version_id: int,
+    ) -> Campaign:
+        """Set the campaign's target_subcategory via optimistic lock.
+
+        Used by the Orchestrator tick to populate the subcategory chosen by
+        the priority function on an empty-start campaign. Increments
+        version_id on success.
+        """
+        result = await session.execute(
+            sa.text(
+                "UPDATE campaigns"
+                " SET target_subcategory = :sub, version_id = version_id + 1"
+                " WHERE id = :id AND version_id = :expected_version"
+                " RETURNING id, status, budget_usd, target_version_id,"
+                "   target_subcategory, created_at, started_at, completed_at,"
+                "   version_id"
+            ),
+            {
+                "sub": target_subcategory,
+                "id": str(campaign_id),
+                "expected_version": expected_version_id,
+            },
+        )
+        row = result.mappings().first()
+        if row is not None:
+            return Campaign.model_validate(dict(row))
+
         check = await session.execute(
             sa.text("SELECT version_id FROM campaigns WHERE id = :id"),
             {"id": str(campaign_id)},

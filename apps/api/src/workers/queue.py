@@ -43,6 +43,28 @@ async def enqueue_red_team_execute(brief_id: UUID, request_id: str) -> None:
         await redis.close()
 
 
+async def enqueue_orchestrator_tick(campaign_id: UUID, request_id: str) -> None:
+    """Push an orchestrator.tick job onto the arq Redis queue.
+
+    Slice 3: called by POST /api/v1/campaigns/start and by the GitHub merge
+    webhook once Slice 6's regression worker is in place. _job_id is set to
+    f"orchestrator:{campaign_id}" so concurrent ticks for the same campaign
+    collapse to a single job (defence-in-depth on top of run_tick's
+    idempotency check).
+    """
+    settings = get_settings()
+    redis = await create_pool(RedisSettings.from_dsn(settings.redis_url))
+    try:
+        await redis.enqueue_job(
+            "orchestrator_tick",
+            str(campaign_id),
+            request_id,
+            _job_id=f"orchestrator:{campaign_id}",
+        )
+    finally:
+        await redis.close()
+
+
 async def enqueue_judge_evaluate(attack_id: UUID, request_id: str) -> None:
     """Push a judge.evaluate job onto the arq Redis queue.
 

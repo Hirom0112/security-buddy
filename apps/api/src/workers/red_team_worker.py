@@ -37,6 +37,7 @@ from src.observability.context import set_request_id
 from src.observability.events import log_event
 from src.settings import get_settings
 from src.workers.judge_worker import evaluate_attack
+from src.workers.orchestrator_worker import orchestrator_tick
 from src.workers.queue import enqueue_judge_evaluate
 
 logger = logging.getLogger("security_buddy.workers")
@@ -155,7 +156,11 @@ class WorkerSettings:
     # _max_tries in queue.py is also possible, but we keep this single-process
     # WorkerSettings simple — the Judge job is idempotent at the run_judge
     # layer regardless, so a retry would no-op).
-    functions: ClassVar[list[Any]] = [execute_red_team, evaluate_attack]
+    functions: ClassVar[list[Any]] = [
+        execute_red_team,
+        evaluate_attack,
+        orchestrator_tick,
+    ]
     max_tries: ClassVar[int] = 3
     keep_result: ClassVar[int] = 300  # 5-minute job deduplication window
     on_startup: ClassVar[Any] = startup
