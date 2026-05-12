@@ -74,16 +74,21 @@ the substrate every later slice depends on.
 
 ### Definition of Done
 
-- [ ] `docker compose up` brings Postgres + Redis up cleanly
-- [ ] `alembic upgrade head` creates all tables and seeds taxonomy
-- [ ] `pytest apps/api/tests/unit` passes (only smoke tests at this stage)
-- [ ] `pnpm typecheck && pnpm lint` passes in `apps/ui/`
-- [ ] `pnpm dev` serves the placeholder dashboard, login gate works
-- [ ] `uvicorn src.main:app` serves `/healthz` returning all green
-- [ ] CI passes on a fresh branch
+- [x] `docker compose up` brings Postgres + Redis up cleanly
+- [x] `alembic upgrade head` creates all tables and seeds taxonomy
+      (12 tables, 16 taxonomy rows — chose §4 enumeration over §1's
+      "thirteen" summary count; discrepancy documented in migration 0003)
+- [x] `pytest apps/api/tests/unit` passes (48 unit + integration tests green)
+- [x] `pnpm typecheck && pnpm lint` passes in `apps/ui/`
+- [x] `pnpm dev` serves the placeholder dashboard, login gate works
+- [x] `uvicorn src.main:app` serves `/healthz` returning all green
+      (app/db/redis = ok; langsmith = unconfigured until key provided)
+- [ ] CI passes on a fresh branch (workflow committed; first run on push)
 - [ ] Both services deployed to Railway as a single project with two
       services (api + ui). URLs documented in README.
-- [ ] `CLAUDE.md`, `ARCHITECTURE.md`, `THREAT_MODEL.md`, `USERS.md` all
+      (Railway project provisioned; service deploy deferred — needs
+      OPENROUTER_API_KEY and LANGSMITH_API_KEY from operator)
+- [x] `CLAUDE.md`, `ARCHITECTURE.md`, `THREAT_MODEL.md`, `USERS.md` all
       checked into `docs/` (already drafted, just placed)
 
 ### Out of scope
