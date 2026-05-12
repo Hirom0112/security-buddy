@@ -1,0 +1,52 @@
+name: Documentation eval (report quality)
+
+# Manual trigger only — costs money, needs a live LLM. Slice 4 mandates the
+# eval baseline but Slice 4 "Out of scope" excludes per-commit runs.
+on:
+  workflow_dispatch:
+    inputs:
+      threshold:
+        description: "Minimum average composite (default 0.80)"
+        required: false
+        default: "0.80"
+
+concurrency:
+  group: documentation-eval-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  eval:
+    name: Run Documentation Agent eval
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: latest
+
+      - name: Sync dependencies
+        run: uv sync --frozen
+
+      - name: Run eval
+        env:
+          DATABASE_URL: postgresql+asyncpg://placeholder/placeholder
+          REDIS_URL: redis://placeholder:6379
+          SESSION_SECRET: placeholder-session-secret-placeholder-placeholder
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY || 'DISABLED' }}
+          LANGSMITH_PROJECT: security-buddy
+          DOCUMENTATION_EVAL_THRESHOLD: ${{ github.event.inputs.threshold }}
+        run: uv run python tests/evals/run_documentation_eval.py
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: documentation-eval-results
+          path: apps/api/tests/evals/results/*.json
+          if-no-files-found: warn
+          retention-days: 90
