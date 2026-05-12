@@ -1,0 +1,56 @@
+name: Judge eval (ground-truth)
+
+# Manual trigger only. PLAN.md Slice 2 ("Out of scope: per-commit eval") and
+# CLAUDE.md §6 — the Judge eval costs money and depends on a live LLM; do
+# not run on every push.
+on:
+  workflow_dispatch:
+    inputs:
+      threshold:
+        description: "Minimum required accuracy (default 0.85)"
+        required: false
+        default: "0.85"
+
+concurrency:
+  group: judge-eval-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  eval:
+    name: Run Judge ground-truth eval
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: latest
+
+      - name: Sync dependencies
+        run: uv sync --frozen
+
+      - name: Run eval
+        env:
+          # Required by Settings.model_validate; the eval reads OPENROUTER and
+          # LANGSMITH but never opens DB/Redis. Placeholder values satisfy the
+          # parse step without enabling any connections.
+          DATABASE_URL: postgresql+asyncpg://placeholder/placeholder
+          REDIS_URL: redis://placeholder:6379
+          SESSION_SECRET: placeholder-session-secret-placeholder-placeholder
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY || 'DISABLED' }}
+          LANGSMITH_PROJECT: security-buddy
+          JUDGE_EVAL_THRESHOLD: ${{ github.event.inputs.threshold }}
+        run: uv run python tests/evals/run_judge_eval.py
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: judge-eval-results
+          path: apps/api/tests/evals/results/*.json
+          if-no-files-found: warn
+          retention-days: 90
