@@ -22,14 +22,15 @@ _COVERAGE_SQL = """
 WITH attempts_by_sub AS (
     SELECT
         a.subcategory,
-        COUNT(*) FILTER (WHERE :version_id::uuid IS NULL OR c.target_version_id = :version_id)
-            AS attempts,
+        COUNT(*) FILTER (
+            WHERE CAST(:version_id AS uuid) IS NULL OR c.target_version_id = :version_id
+        ) AS attempts,
         COUNT(*) FILTER (
             WHERE v.verdict = 'exploit'
-              AND (:version_id::uuid IS NULL OR c.target_version_id = :version_id)
+              AND (CAST(:version_id AS uuid) IS NULL OR c.target_version_id = :version_id)
         ) AS exploit_count,
         MAX(a.executed_at) FILTER (
-            WHERE :version_id::uuid IS NULL OR c.target_version_id = :version_id
+            WHERE CAST(:version_id AS uuid) IS NULL OR c.target_version_id = :version_id
         ) AS last_attempted_at
     FROM attacks a
     JOIN campaigns c ON c.id = a.campaign_id
