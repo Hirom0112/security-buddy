@@ -30,8 +30,12 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   experimental: {
+    // nodeMiddleware is required so middleware.ts can run on the Node.js
+    // runtime — verifySession uses Node's crypto.createHmac which the
+    // Edge runtime doesn't ship. Flag is experimental in 15.5 but stable
+    // in 15.6; cast keeps tsc happy until @types/next catches up.
     nodeMiddleware: true,
-  },
+  } as NonNullable<NextConfig["experimental"]>,
   async headers() {
     return [
       {

@@ -1,4 +1,4 @@
-import { cookies, headers } from "next/headers";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { Bebas_Neue, DM_Mono, Nunito } from "next/font/google";
 import { getSession } from "@/lib/auth/session";
@@ -35,13 +35,10 @@ export default async function LoginPage() {
   }
 
   // CSRF cookie is issued by middleware on unauthenticated GET /login.
-  // Read it back here — middleware also forwards the fresh value via
-  // the x-sb-csrf request header on the first hit so we don't read a
-  // stale cookie from a previous request in the same browser session.
-  const reqHeaders = await headers();
+  // Middleware mutates request.cookies via NextResponse.next({ request }),
+  // so cookies().get() here sees the fresh value on the very first hit.
   const cookieStore = await cookies();
-  const csrfToken =
-    reqHeaders.get("x-sb-csrf") ?? cookieStore.get("sb_csrf")?.value ?? "";
+  const csrfToken = cookieStore.get("sb_csrf")?.value ?? "";
 
   return (
     <main
