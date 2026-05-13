@@ -101,6 +101,7 @@ export function LoginScene() {
           THREAT DETECTED. ACCESS DENIED.
         </text>
         <text
+          className={styles.bubbleTaglineA}
           x="187"
           y="68"
           textAnchor="middle"
@@ -110,6 +111,18 @@ export function LoginScene() {
           fill="#061a12"
         >
           WE CATCH WHAT OTHERS MISS.
+        </text>
+        <text
+          className={styles.bubbleTaglineB}
+          x="187"
+          y="68"
+          textAnchor="middle"
+          fontFamily="Nunito,sans-serif"
+          fontWeight="900"
+          fontSize="14"
+          fill="#061a12"
+        >
+          YOUR AI&rsquo;S WORST NIGHTMARE.
         </text>
         <text
           x="187"

@@ -542,82 +542,99 @@
 
 /* APPLY ANIMATIONS */
 .thiefMove {
-  animation: thiefCycle 7s ease-in-out infinite;
+  animation: thiefCycle 5s ease-in-out infinite;
 }
 .thiefBodyG {
   animation:
     thiefBob 1.8s ease-in-out infinite,
-    thiefTiltShock 7s ease-in-out infinite;
+    thiefTiltShock 5s ease-in-out infinite;
   transform-origin: 410px 280px;
 }
 .reachArm {
-  animation: armReach 7s ease-in-out infinite;
+  animation: armReach 5s ease-in-out infinite;
   transform-origin: 356px 282px;
 }
 .thiefEyesG {
-  animation: eyesWide 7s ease-in-out infinite;
+  animation: eyesWide 5s ease-in-out infinite;
   transform-origin: 407px 216px;
 }
 .thiefMouthG {
-  animation: mouthShock 7s ease-in-out infinite;
+  animation: mouthShock 5s ease-in-out infinite;
   transform-origin: 407px 238px;
 }
 .lockGrp {
   animation:
-    lockShake 7s ease-in-out infinite,
+    lockShake 5s ease-in-out infinite,
     lockGlowPulse 2.5s ease-in-out infinite;
   transform-origin: 175px 245px;
 }
 .zapGrp {
-  animation: zapShow 7s ease-in-out infinite;
+  animation: zapShow 5s ease-in-out infinite;
   transform-origin: 240px 228px;
 }
 .zapRingEl {
-  animation: zapRing 7s ease-in-out infinite;
+  animation: zapRing 5s ease-in-out infinite;
   transform-origin: 240px 228px;
 }
 .whiteFlashEl {
-  animation: whiteFlash 7s ease-in-out infinite;
+  animation: whiteFlash 5s ease-in-out infinite;
 }
 .bubbleGrp {
   animation: bubbleBounce 3s ease-in-out infinite;
   transform-origin: 175px 80px;
 }
 
+@keyframes taglineSwapA {
+  0%, 45%   { opacity: 1; }
+  50%, 95%  { opacity: 0; }
+  100%      { opacity: 1; }
+}
+@keyframes taglineSwapB {
+  0%, 45%   { opacity: 0; }
+  50%, 95%  { opacity: 1; }
+  100%      { opacity: 0; }
+}
+.bubbleTaglineA {
+  animation: taglineSwapA 5s ease-in-out infinite;
+}
+.bubbleTaglineB {
+  animation: taglineSwapB 5s ease-in-out infinite;
+}
+
 .starA {
   --sx: -22px;
   --sy: -18px;
   --sr: -30deg;
-  animation: starPop 7s 0s ease-out infinite;
+  animation: starPop 5s 0s ease-out infinite;
 }
 .starB {
   --sx: 16px;
   --sy: -26px;
   --sr: 20deg;
-  animation: starPop 7s 0.06s ease-out infinite;
+  animation: starPop 5s 0.06s ease-out infinite;
 }
 .starC {
   --sx: -8px;
   --sy: 20px;
   --sr: 45deg;
-  animation: starPop 7s 0.12s ease-out infinite;
+  animation: starPop 5s 0.12s ease-out infinite;
 }
 
 .sw1 {
-  animation: sweat 7s 0s ease-in infinite;
+  animation: sweat 5s 0s ease-in infinite;
 }
 .sw2 {
-  animation: sweat 7s 0.12s ease-in infinite;
+  animation: sweat 5s 0.12s ease-in infinite;
 }
 
 .arc1 {
-  animation: arcFlash 7s 0s ease-in-out infinite;
+  animation: arcFlash 5s 0s ease-in-out infinite;
 }
 .arc2 {
-  animation: arcFlash 7s 0.05s ease-in-out infinite;
+  animation: arcFlash 5s 0.05s ease-in-out infinite;
 }
 .arc3 {
-  animation: arcFlash 7s 0.1s ease-in-out infinite;
+  animation: arcFlash 5s 0.1s ease-in-out infinite;
 }
 
 .p1 {
@@ -644,6 +661,8 @@
   .zapRingEl,
   .whiteFlashEl,
   .bubbleGrp,
+  .bubbleTaglineA,
+  .bubbleTaglineB,
   .starA,
   .starB,
   .starC,
