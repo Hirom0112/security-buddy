@@ -6,8 +6,10 @@
 > verify the fixes held. Target: an OpenEMR Clinical Co-Pilot.
 
 **Author:** Hirom Alarcon · **Week:** 3 — Gauntlet AI Austin Admission Track
-**Status:** Build in progress — see [`docs/PLAN.md`](docs/PLAN.md) for the
-current slice.
+**Status:** MVP loop verified end-to-end against a live deployed target on
+2026-05-12 — see [Live Demo Results](#live-demo-results-2026-05-12) below.
+Slice 8 polish (cost analysis, demo video, curated findings export) is
+in flight per [`docs/PLAN.md`](docs/PLAN.md).
 
 ---
 
@@ -32,7 +34,7 @@ submission.
 | **Eval Dataset** (≥3 attack categories, reproducible) | [`apps/api/tests/evals/`](apps/api/tests/evals/) — ground-truth sets + runners. Baselines tracked in [`docs/EVAL_BASELINES.md`](docs/EVAL_BASELINES.md). |
 | **Vulnerability Reports** (≥3, professional format) | [`docs/findings/`](docs/findings/) *(in progress — Slice 4 produces, Slice 8 curates)* |
 | **AI Cost Analysis** (dev spend + projections at 100/1K/10K/100K runs) | `docs/COST_ANALYSIS.md` *(in progress — Slice 8)* |
-| **Deployed Application** (publicly accessible target, platform running live tests) | URLs below once deployed (Slice 0 + 1) |
+| **Deployed Application** (publicly accessible target, platform running live tests) | URLs in [§ Deployed URLs](#deployed-urls) below. First live campaign results in [§ Live Demo Results](#live-demo-results-2026-05-12). |
 | **Social Post** (final submission only) | *(in progress — Slice 8)* |
 
 **Note on "Forked from OpenEMR".** The submission template assumes the platform
@@ -88,11 +90,48 @@ OWASP LLM 2025 / MITRE ATLAS 5.1.0 / HIPAA mappings, read
 
 ## Deployed URLs
 
-*Filled in after Slice 0 deployment to Railway.*
+All services live on Railway. Login required on the Security Buddy console
+(single-operator auth, cookie-based).
 
-- **Security Buddy (operator console):** _TBD — Slice 0_
-- **Target — OpenEMR Clinical Co-Pilot:** _TBD — already deployed from W2_
-- **Target repo (Patch Agent PR destination):** _TBD_
+- **Security Buddy (operator console):** https://security-buddy-production.up.railway.app
+- **Security Buddy API:** https://security-buddy-api-production.up.railway.app
+- **Target — OpenEMR Clinical Co-Pilot (chart system):** https://clinical-copilot-openemr-production.up.railway.app
+- **Target — Agent-API (the AI surface being attacked):** https://copilot-agent-api-production.up.railway.app
+- **Target repo (Patch Agent PR destination):** OpenEMR fork on this account
+  (PAT scoped to that fork only)
+
+---
+
+## Live Demo Results (2026-05-12)
+
+The first end-to-end live campaign against the deployed Clinical Co-Pilot
+produced:
+
+| Metric | Value |
+|---|---|
+| Campaign | `60662d6c-5614-46f5-bf86-e4087a50df4a` |
+| Attacks fired against live target | 18 |
+| Verdicts written by Judge | 17 |
+| **Exploits confirmed** | **13** (76% of judged attacks) |
+| Partial findings | 2 |
+| Safe responses | 2 |
+| Vulnerability reports drafted by Documentation Agent | 13 (all critical, all `status='draft'`) |
+| `agent_traces` rows (cost telemetry) | 44 |
+
+All 13 critical findings are correctly held in `status='draft'` — the
+soft-gate per [`docs/USERS.md`](docs/USERS.md). They require operator
+confirmation before the Patch Agent enqueues PRs against the target fork.
+
+Eval baselines (recorded in [`docs/EVAL_BASELINES.md`](docs/EVAL_BASELINES.md)):
+
+| Component | Threshold | Result |
+|---|---|---|
+| Judge accuracy | 0.85 | **0.875** (28/32 ground-truth cases) |
+| Documentation composite | 0.80 | **0.817** (5/5 fixtures) |
+
+Both above gate after a targeted prompt-engineering pass measured against
+the ground-truth sets — see commit `634dd30` for the diff and
+`EVAL_BASELINES.md` for before/after rows.
 
 ---
 
