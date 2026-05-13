@@ -38,8 +38,10 @@ _VULN_COLS = (
 )
 
 # A stable advisory lock key for the vuln_id sequence. Postgres advisory
-# locks are 64-bit integers; this is the literal "VUL_ID_SEQ" hashed.
-_VULN_ID_LOCK: int = 0x56554C49445F534551
+# locks are signed 64-bit integers; this is the literal "VULIDSEQ"
+# (8 bytes, fits in int64). The earlier "VUL_ID_SEQ" packed to 9 bytes
+# which overflowed the bigint parameter and broke vuln creation.
+_VULN_ID_LOCK: int = 0x56554C4944534551
 
 
 class VulnerabilityRepository:
