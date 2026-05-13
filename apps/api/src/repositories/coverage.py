@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.coverage import CoverageRow, TaxonomyPriority
 
+# Build-cache marker: f746655 fix
 _COVERAGE_SQL = """
 WITH attempts_by_sub AS (
     SELECT
