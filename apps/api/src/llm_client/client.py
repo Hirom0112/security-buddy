@@ -18,9 +18,12 @@ Security rules (CLAUDE.md §2):
 import hashlib
 import json
 import time
+from decimal import Decimal
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 import httpx
+import sqlalchemy as sa
 
 from src.llm_client.redaction import redact
 from src.llm_client.types import AgentTag, Completion, Message, TokenUsage
@@ -28,6 +31,9 @@ from src.observability.context import get_request_id
 from src.observability.events import log_event
 from src.observability.metrics import LLM_CALL_DURATION, LLM_COST_TOTAL
 from src.settings import Settings
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 _OPENROUTER_BASE = "https://openrouter.ai/api/v1"
 _DEFAULT_TIMEOUT = 60.0  # seconds
@@ -44,11 +50,32 @@ class LLMClient:
     pass through arq context). Do NOT create per-request instances.
     """
 
-    def __init__(self, settings: Settings) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        session_factory: "async_sessionmaker[AsyncSession] | None" = None,
+    ) -> None:
         self._api_key = settings.openrouter_api_key.get_secret_value()
         self._langsmith_disabled = settings.langsmith_disabled
         self._langsmith_api_key = settings.langsmith_api_key.get_secret_value()
         self._langsmith_project = settings.langsmith_project
+        self._session_factory = session_factory
+
+        # Lazy-instantiate the LangSmith client. None when disabled or import fails.
+        self._langsmith_client: object | None = None
+        if not self._langsmith_disabled:
+            try:
+                from langsmith import Client as _LangsmithClient
+
+                self._langsmith_client = _LangsmithClient(
+                    api_key=self._langsmith_api_key
+                )
+            except Exception as exc:
+                log_event(
+                    "langsmith_client_init_failed",
+                    outcome="failure",
+                    error_type=type(exc).__name__,
+                )
 
     async def complete(
         self,
@@ -199,7 +226,7 @@ class LLMClient:
         return result
 
     # ------------------------------------------------------------------
-    # Stubs — wired in later slices
+    # Persistence + tracing — best-effort, never fatal
     # ------------------------------------------------------------------
 
     async def _persist_trace(
@@ -214,17 +241,54 @@ class LLMClient:
         duration_ms: float,
         outcome: str,
     ) -> None:
-        """Persist an agent_traces row to Postgres.
-
-        # TODO(slice-0): wire to agent_traces table once schema is migrated.
-        # The infra agent (or the Slice 1 database migration) creates the
-        # agent_traces table; this method should then:
-        #   async with session_factory() as session:
-        #       session.add(AgentTraceORM(...))
-        #       await session.commit()
+        """Insert one agent_traces row. No-ops when no session_factory was injected
+        (e.g. eval scripts running standalone). Failures are logged, never raised —
+        the LLM call itself has already succeeded by this point.
         """
-        # Redact the tag for safe logging, even though we only log hashes.
-        _ = redact(tag.model_dump())  # validates redaction path; value not used yet
+        _ = redact(tag.model_dump())  # validates redaction path
+
+        if self._session_factory is None:
+            return
+
+        try:
+            async with self._session_factory() as session:
+                await session.execute(
+                    sa.text(
+                        "INSERT INTO agent_traces ("
+                        "  agent, request_id, model, prompt_hash, completion_hash,"
+                        "  tokens_in, tokens_out, cost_usd, duration_ms, outcome,"
+                        "  campaign_id, attack_id, verdict_id"
+                        ") VALUES ("
+                        "  :agent, :request_id, :model, :prompt_hash, :completion_hash,"
+                        "  :tokens_in, :tokens_out, :cost_usd, :duration_ms, :outcome,"
+                        "  :campaign_id, :attack_id, :verdict_id"
+                        ")"
+                    ),
+                    {
+                        "agent": tag.agent,
+                        "request_id": tag.request_id,
+                        "model": model,
+                        "prompt_hash": prompt_hash,
+                        "completion_hash": completion_hash or None,
+                        "tokens_in": usage.prompt_tokens,
+                        "tokens_out": usage.completion_tokens,
+                        "cost_usd": Decimal(str(cost_usd)),
+                        "duration_ms": round(duration_ms),
+                        "outcome": outcome,
+                        "campaign_id": str(tag.campaign_id) if tag.campaign_id else None,
+                        "attack_id": str(tag.attack_id) if tag.attack_id else None,
+                        "verdict_id": str(tag.verdict_id) if tag.verdict_id else None,
+                    },
+                )
+                await session.commit()
+        except Exception as exc:
+            log_event(
+                "agent_trace_persist_failed",
+                agent=tag.agent,
+                model=model,
+                outcome="failure",
+                error_type=type(exc).__name__,
+            )
 
     def _emit_langsmith_span(
         self,
@@ -238,15 +302,47 @@ class LLMClient:
         duration_ms: float,
         outcome: str,
     ) -> None:
-        """Emit a LangSmith span for this LLM call.
+        """Create a LangSmith run for this LLM call.
 
-        No-ops if LANGSMITH_API_KEY is the literal "DISABLED".
+        No-ops when LANGSMITH_API_KEY is "DISABLED" or the client failed to
+        instantiate. Failures are logged, never raised.
 
-        # TODO(slice-0): replace stub with real langsmith.Client().create_run()
-        # call once the LangSmith project is validated in Slice 1+.
+        Inputs/outputs carry hashes only — never raw prompt or completion text.
         """
-        if self._langsmith_disabled:
+        if self._langsmith_client is None:
             return
-        # Real emit would use langsmith.Client(api_key=self._langsmith_api_key)
-        # and create a run with the prompt_hash, completion_hash, usage, and tags.
-        # Deferred to Slice 1 when we have a real campaign to trace.
+
+        try:
+            self._langsmith_client.create_run(  # type: ignore[attr-defined]
+                name=f"llm.{tag.agent}",
+                run_type="llm",
+                inputs={"prompt_hash": prompt_hash, "model": model},
+                outputs={
+                    "completion_hash": completion_hash or None,
+                    "tokens_in": usage.prompt_tokens,
+                    "tokens_out": usage.completion_tokens,
+                    "cost_usd": cost_usd,
+                },
+                extra={
+                    "metadata": {
+                        "agent": tag.agent,
+                        "model": model,
+                        "request_id": tag.request_id,
+                        "campaign_id": str(tag.campaign_id) if tag.campaign_id else None,
+                        "attack_id": str(tag.attack_id) if tag.attack_id else None,
+                        "verdict_id": str(tag.verdict_id) if tag.verdict_id else None,
+                        "duration_ms": duration_ms,
+                        "outcome": outcome,
+                    },
+                    "tags": [f"agent:{tag.agent}", f"model:{model}"],
+                },
+                project_name=self._langsmith_project,
+            )
+        except Exception as exc:
+            log_event(
+                "langsmith_emit_failed",
+                agent=tag.agent,
+                model=model,
+                outcome="failure",
+                error_type=type(exc).__name__,
+            )

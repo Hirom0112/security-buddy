@@ -16,7 +16,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class AgentTracesRepository:
-    """Read-only aggregates over agent_traces."""
+    """Read-only aggregates over agent_traces.
+
+    Writes happen inline in `src.llm_client.client.LLMClient._persist_trace`
+    because the import-linter `llm-client-leaf` contract forbids llm_client
+    from importing repositories.
+    """
 
     async def total_cost_for_campaign(
         self,

@@ -129,7 +129,7 @@ async def startup(ctx: dict[str, Any]) -> None:
         expire_on_commit=False,
     )
     rate_limiter = RateLimiter()
-    llm_client = LLMClient(settings)
+    llm_client = LLMClient(settings, session_factory=factory)
 
     ctx["engine"] = engine
     ctx["session_factory"] = factory
