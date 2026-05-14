@@ -37,12 +37,95 @@ async function apiFetch(
   });
   if (!resp.ok) {
     const text = await resp.text();
+    // Try RFC 7807 problem+json: surface `detail` if present.
+    let detail: string | undefined;
+    try {
+      const parsed: unknown = JSON.parse(text);
+      if (
+        parsed !== null &&
+        typeof parsed === "object" &&
+        "detail" in parsed &&
+        typeof (parsed as { detail: unknown }).detail === "string"
+      ) {
+        detail = (parsed as { detail: string }).detail;
+      }
+    } catch {
+      // not JSON; fall through.
+    }
     throw new ApiError(
-      `API ${path} returned ${resp.status}: ${text.slice(0, 200)}`,
+      detail ?? `API ${path} returned ${resp.status}: ${text.slice(0, 200)}`,
       resp.status
     );
   }
   return resp;
+}
+
+// ---------------------------------------------------------------------------
+// Campaigns
+// ---------------------------------------------------------------------------
+
+export type CampaignStartMode = "live" | "smoke";
+
+export interface StartCampaignInput {
+  budget_usd: number;
+  mode: CampaignStartMode;
+  target_subcategory?: string | undefined;
+}
+
+export interface StartCampaignResult {
+  campaign_id: string;
+  status: string;
+  enqueued_at: string;
+}
+
+function isStartCampaignResult(v: unknown): v is StartCampaignResult {
+  return (
+    v !== null &&
+    typeof v === "object" &&
+    "campaign_id" in v &&
+    typeof (v as { campaign_id: unknown }).campaign_id === "string" &&
+    "status" in v &&
+    typeof (v as { status: unknown }).status === "string" &&
+    "enqueued_at" in v &&
+    typeof (v as { enqueued_at: unknown }).enqueued_at === "string"
+  );
+}
+
+export async function startCampaign(
+  input: StartCampaignInput
+): Promise<StartCampaignResult> {
+  const body: Record<string, unknown> = {
+    budget_usd: input.budget_usd.toFixed(2),
+    mode: input.mode,
+  };
+  if (input.target_subcategory && input.target_subcategory.trim() !== "") {
+    body["target_subcategory"] = input.target_subcategory.trim();
+  }
+  const resp = await apiFetch("/api/v1/campaigns/start", {
+    method: "POST",
+    jsonBody: body,
+  });
+  const data: unknown = await resp.json();
+  if (!isStartCampaignResult(data)) {
+    throw new ApiError("Unexpected response from /api/v1/campaigns/start", 500);
+  }
+  return data;
+}
+
+// ---------------------------------------------------------------------------
+// Halt an in-flight campaign.
+//
+// Backend contract:
+//   POST /api/v1/campaigns/{id}/halt
+//   200 — Campaign DTO with status='halted'
+//   404 — campaign not found (RFC 7807)
+//   409 — campaign is not in {pending, in_progress} OR version conflict
+// ---------------------------------------------------------------------------
+
+export async function haltCampaign(campaignId: string): Promise<void> {
+  await apiFetch(`/api/v1/campaigns/${encodeURIComponent(campaignId)}/halt`, {
+    method: "POST",
+  });
 }
 
 // ---------------------------------------------------------------------------

@@ -8,9 +8,21 @@ import styles from "@/app/dashboard.module.css";
 
 export const dynamic = "force-dynamic";
 
-export default async function VulnerabilitiesPage() {
+interface VulnerabilitiesPageProps {
+  searchParams?: Promise<{ status?: string | string[] }>;
+}
+
+export default async function VulnerabilitiesPage({
+  searchParams,
+}: VulnerabilitiesPageProps) {
   const session = await getSession();
   if (session === null) redirect("/login");
+
+  const params = (await searchParams) ?? {};
+  const rawStatus = params.status;
+  const statusFilter =
+    typeof rawStatus === "string" ? rawStatus : rawStatus?.[0];
+  const draftOnly = statusFilter === "draft";
 
   let vulns;
   try {
@@ -24,7 +36,9 @@ export default async function VulnerabilitiesPage() {
   }
 
   const drafts = vulns.filter((v) => v.status === "draft");
-  const rest = vulns.filter((v) => v.status !== "draft");
+  const rest = draftOnly
+    ? []
+    : vulns.filter((v) => v.status !== "draft");
   const openCount = vulns.filter(
     (v) => v.status === "open" || v.status === "draft",
   ).length;
@@ -73,22 +87,24 @@ export default async function VulnerabilitiesPage() {
           </div>
         )}
 
-        <div className={styles.panel}>
-          <div className={styles.panelHeader}>
-            <div className={styles.panelHeaderLeft}>
-              <div className={styles.panelTitle}>All Vulnerabilities</div>
+        {!draftOnly && (
+          <div className={styles.panel}>
+            <div className={styles.panelHeader}>
+              <div className={styles.panelHeaderLeft}>
+                <div className={styles.panelTitle}>All Vulnerabilities</div>
+              </div>
+            </div>
+            <div className={styles.panelBody}>
+              {rest.length === 0 && drafts.length === 0 ? (
+                <div className={styles.panelEmpty}>
+                  No vulnerabilities recorded yet.
+                </div>
+              ) : (
+                <VulnTable rows={rest} />
+              )}
             </div>
           </div>
-          <div className={styles.panelBody}>
-            {rest.length === 0 && drafts.length === 0 ? (
-              <div className={styles.panelEmpty}>
-                No vulnerabilities recorded yet.
-              </div>
-            ) : (
-              <VulnTable rows={rest} />
-            )}
-          </div>
-        </div>
+        )}
       </div>
     </ThemedShell>
   );

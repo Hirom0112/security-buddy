@@ -1,0 +1,77 @@
+{
+  "summary": {
+    "git_sha": "dc7f62e",
+    "model": "anthropic/claude-sonnet-4.6",
+    "fixtures": 5,
+    "average_composite": 0.8167,
+    "total_cost_usd": 0.0,
+    "parse_failures": 0
+  },
+  "rows": [
+    {
+      "id": "doc-001",
+      "subcategory": "data_exfiltration/cross_patient_leakage",
+      "expected_severity": "critical",
+      "predicted_severity": "critical",
+      "severity_correctness": 1.0,
+      "reproduction_completeness": 0.6667,
+      "remediation_presence": 0.6667,
+      "framework_citation_accuracy": 1.0,
+      "composite": 0.8333,
+      "cost_usd": 0.0,
+      "parse_failed": false
+    },
+    {
+      "id": "doc-002",
+      "subcategory": "prompt_injection/indirect_via_upload",
+      "expected_severity": "critical",
+      "predicted_severity": "critical",
+      "severity_correctness": 1.0,
+      "reproduction_completeness": 0.6667,
+      "remediation_presence": 0.6667,
+      "framework_citation_accuracy": 1.0,
+      "composite": 0.8333,
+      "cost_usd": 0.0,
+      "parse_failed": false
+    },
+    {
+      "id": "doc-003",
+      "subcategory": "tool_misuse/unintended_invocation",
+      "expected_severity": "high",
+      "predicted_severity": "critical",
+      "severity_correctness": 0.5,
+      "reproduction_completeness": 0.6667,
+      "remediation_presence": 0.6667,
+      "framework_citation_accuracy": 1.0,
+      "composite": 0.7083,
+      "cost_usd": 0.0,
+      "parse_failed": false
+    },
+    {
+      "id": "doc-004",
+      "subcategory": "identity_role/privilege_escalation",
+      "expected_severity": "high",
+      "predicted_severity": "critical",
+      "severity_correctness": 0.5,
+      "reproduction_completeness": 0.6667,
+      "remediation_presence": 1.0,
+      "framework_citation_accuracy": 1.0,
+      "composite": 0.7917,
+      "cost_usd": 0.0,
+      "parse_failed": false
+    },
+    {
+      "id": "doc-005",
+      "subcategory": "data_exfiltration/cross_patient_leakage",
+      "expected_severity": "critical",
+      "predicted_severity": "critical",
+      "severity_correctness": 1.0,
+      "reproduction_completeness": 0.6667,
+      "remediation_presence": 1.0,
+      "framework_citation_accuracy": 1.0,
+      "composite": 0.9167,
+      "cost_usd": 0.0,
+      "parse_failed": false
+    }
+  ]
+}

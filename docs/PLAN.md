@@ -362,41 +362,60 @@ target's fork. Branch protection enforces the human gate at merge.
 
 ### Deliverables
 
-1. **GitHub PAT** scoped to `repo` access on the OpenEMR fork only,
-   stored as `GITHUB_PAT` env var.
-2. **Branch protection on the fork's `main`** configured manually:
-   - Require pull request before merging
-   - Require at least one approving review from the operator
-   - Require status checks to pass
+1. [x] **GitHub PAT** (fine-grained, `github_pat_…`) provisioned with
+   admin perms on `Hirom0112/openemr`. Set in local `.env` and on
+   Railway services `security-buddy-api` + `security-buddy-agents`.
+2. [x] **Branch protection on the fork's default branch
+   (`clinical-copilot`)** configured via `gh api`:
+   - Require PR before merging (1 approving review)
+   - Dismiss stale reviews on new commits
+   - Conversation resolution required
    - No force push, no deletions
-3. `agents/patch/` package:
-   - Repo locator: clones the OpenEMR fork into a temp workspace
-   - Code search: finds the relevant file(s) based on the vulnerability
-     report's surface description
-   - Diff generator: LLM call that produces a unified diff with
-     justification
-   - GitHub API client wrapper: create branch, commit, open PR
-4. LangGraph node + arq worker for `patch.propose(vulnerability_id)`.
-5. `patches` row written with `pr_url`, `branch_name`, `status='awaiting_human_review'`.
-6. Webhook receiver: when a PR is merged, update `patches.status='merged'`
-   and enqueue (placeholder for now) the regression worker.
-7. Unit tests for: code search, diff generation prompt schema, GitHub API
-   client (mocked).
-8. Manual operator test:
-   - Run slice 1+2+3+4 end-to-end against the live target
-   - Patch Agent opens a real PR against the OpenEMR fork
-   - Operator reviews and merges (or rejects)
-   - The merge is recorded in Postgres
+   - `enforce_admins: true` — even admin tokens cannot bypass
+     (enabled 2026-05-13 via
+     `POST /repos/.../branches/clinical-copilot/protection/enforce_admins`)
+3. [x] `agents/patch/` package scaffolded:
+   - `github_client.py` — create branch from default, PUT contents,
+     open PR (head=`security-buddy/patch-…`, base=`clinical-copilot`)
+   - `prompt.py` / `parse.py` / `schema.py` — diff prompt + structured
+     output parsing
+   - `propose.py` — LangGraph node reading vulnerability → writing
+     `patches` row
+   - `model.py` — pinned model for diff generation
+4. [x] arq worker `patch_worker.py` consuming
+   `patch.propose(vulnerability_id)` jobs.
+5. [x] `patches` row schema with `pr_url`, `branch_name`,
+   `status='awaiting_human_review'` (per existing repo + migration).
+6. [x] Webhook receiver `routes/webhooks.py` for GitHub merge events
+   (regression enqueue lands in Slice 6 — the placeholder is in
+   place).
+7. [x] Unit tests for github_client, parse, prompt
+   (`tests/unit/patch/` — 17 tests, all green 2026-05-13).
+8. [ ] Manual operator test:
+   - [ ] Run slice 1+2+3+4 end-to-end against the live target
+   - [ ] Patch Agent opens a real PR against `Hirom0112/openemr`
+   - [ ] Operator reviews and merges (or rejects)
+   - [ ] The merge is recorded in Postgres via webhook
+
+### Env var contract (set everywhere)
+
+- `GITHUB_PAT` — fine-grained PAT, repo-scoped to fork only
+- `GITHUB_FORK_REPO=Hirom0112/openemr`
+- `GITHUB_DEFAULT_BRANCH=clinical-copilot`
+- `GITHUB_WEBHOOK_SECRET` — still **TODO**, route is fail-closed
+  until set
 
 ### Definition of Done
 
-- [ ] `pytest` green
-- [ ] One real PR opened by the Patch Agent against the OpenEMR fork,
-      reviewable by the operator
-- [ ] Branch protection on `main` confirmed to block direct push (test
-      with the Patch Agent's PAT: a direct push to `main` fails with a
-      403)
-- [ ] Merged PR triggers `patches.status='merged'` via webhook
+- [x] `pytest` green on `tests/unit/patch` (17 passed)
+- [ ] One real PR opened by the Patch Agent against
+      `Hirom0112/openemr`, reviewable by the operator
+- [ ] Branch protection on `clinical-copilot` confirmed to block
+      direct push (test with the Patch Agent's PAT: a direct push to
+      `clinical-copilot` fails with a 403; with `enforce_admins: true`
+      this should hold even for admin tokens)
+- [ ] `GITHUB_WEBHOOK_SECRET` provisioned + webhook URL registered on
+      `Hirom0112/openemr` → merge event flips `patches.status='merged'`
 
 ### Out of scope
 

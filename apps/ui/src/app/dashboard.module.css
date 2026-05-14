@@ -10,18 +10,20 @@
   --sb-border: #1e1e32;
   --sb-border-bright: #2a2a44;
   --sb-neon: #00f5c4;
+  --sb-accent: #00f5c4;
   --sb-neon-dim: rgba(0, 245, 196, 0.12);
   --sb-neon-glow: rgba(0, 245, 196, 0.4);
   --sb-purple: #7c3aed;
   --sb-danger: #ff3d6b;
   --sb-warn: #ffb830;
   --sb-text: #e2e8f0;
-  --sb-muted: #4a5568;
+  --sb-fg: #e2e8f0;
+  --sb-muted: #8a93a4;
   --sb-muted2: #2d3748;
 
   background: var(--sb-bg);
   color: var(--sb-text);
-  font-family: "DM Mono", ui-monospace, monospace;
+  font-family: var(--font-mono, "DM Mono", ui-monospace, monospace);
   min-height: 100vh;
   overflow-x: hidden;
   position: relative;
@@ -102,7 +104,7 @@
   line-height: 1;
 }
 .navBrandName {
-  font-family: "Bebas Neue", "Impact", sans-serif;
+  font-family: var(--font-sans, system-ui, -apple-system, sans-serif);
   font-size: 20px;
   letter-spacing: 2px;
   color: var(--sb-neon);
@@ -131,7 +133,7 @@
   text-decoration: none;
   transition: all 0.2s;
   border: 1px solid transparent;
-  font-family: "DM Mono", ui-monospace, monospace;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
 }
 .navLink:hover {
   color: var(--sb-text);
@@ -169,7 +171,7 @@
   background: transparent;
   border: 1px solid var(--sb-border-bright);
   color: var(--sb-muted);
-  font-family: "DM Mono", ui-monospace, monospace;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
   font-size: 11px;
   letter-spacing: 2px;
   text-transform: uppercase;
@@ -226,21 +228,44 @@
   letter-spacing: 3px;
   line-height: 1;
   min-height: 68px;
+  position: relative;
 }
-.sloganLine {
-  display: inline-block;
+.sloganRotator {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 68px;
+  line-height: 68px;
+}
+.sloganRotatorA,
+.sloganRotatorB {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  white-space: nowrap;
   background: linear-gradient(90deg, var(--sb-neon), #00c9ff, var(--sb-neon));
   background-size: 200% auto;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  animation: shimmer-text 4s linear infinite;
 }
-.sloganIn {
-  animation: shimmer-text 4s linear infinite, slogan-in 0.4s ease-out;
+.sloganRotatorA {
+  animation: shimmer-text 4s linear infinite, slogan-swap-a 10s ease-in-out infinite;
 }
-.sloganOut {
-  animation: shimmer-text 4s linear infinite, slogan-out 0.4s ease-in forwards;
+.sloganRotatorB {
+  animation: shimmer-text 4s linear infinite, slogan-swap-b 10s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sloganRotatorA,
+  .sloganRotatorB {
+    animation: shimmer-text 4s linear infinite;
+  }
+  .sloganRotatorB {
+    display: none;
+  }
 }
 .heroSub {
   margin-top: 12px;
@@ -294,7 +319,7 @@
   border: none;
   outline: none;
   color: var(--sb-text);
-  font-family: "DM Mono", ui-monospace, monospace;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
   font-size: 11px;
   letter-spacing: 0.5px;
   padding: 2px 0;
@@ -390,6 +415,15 @@
 .statCard:nth-child(3) { animation-delay: 0.19s; }
 .statCard:nth-child(4) { animation-delay: 0.26s; }
 
+/* Primary treatment — applied when Open Vulnerabilities > 0. Slightly larger
+   and the accent border becomes hot. Stays inside the cyberpunk vocabulary. */
+.statCardPrimary {
+  border-color: rgba(255, 61, 107, 0.55);
+  background: linear-gradient(180deg, rgba(255, 61, 107, 0.06), var(--sb-card));
+}
+.statCardPrimary::after { opacity: 0.14; }
+.statCardMuted { opacity: 0.85; }
+
 .statLabel {
   font-size: 10px;
   letter-spacing: 3px;
@@ -478,7 +512,7 @@
   gap: 12px;
 }
 .sectionTitle {
-  font-family: "Bebas Neue", "Impact", sans-serif;
+  font-family: var(--font-sans, system-ui, -apple-system, sans-serif);
   font-size: 22px;
   letter-spacing: 2px;
   color: var(--sb-text);
@@ -568,7 +602,7 @@
   border: 1px solid var(--sb-border);
   display: inline-block;
   margin-right: 6px;
-  font-family: "DM Mono", ui-monospace, monospace;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
 }
 .subLabel {
   color: var(--sb-text);
@@ -613,13 +647,13 @@
   border: 1px dashed rgba(255, 184, 48, 0.4);
   background: rgba(255, 184, 48, 0.04);
   color: var(--sb-warn);
-  font-family: "DM Mono", ui-monospace, monospace;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
   font-size: 12px;
   letter-spacing: 1px;
 }
 .errorBanner strong {
   display: block;
-  font-family: "Bebas Neue", "Impact", sans-serif;
+  font-family: var(--font-sans, system-ui, -apple-system, sans-serif);
   font-size: 18px;
   letter-spacing: 2px;
   margin-bottom: 6px;
@@ -652,13 +686,15 @@
   from { transform: rotate(0deg); }
   to   { transform: rotate(360deg); }
 }
-@keyframes slogan-in {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: translateY(0); }
+@keyframes slogan-swap-a {
+  0%, 42%   { opacity: 1; }
+  50%, 92%  { opacity: 0; }
+  100%      { opacity: 1; }
 }
-@keyframes slogan-out {
-  from { opacity: 1; transform: translateY(0); }
-  to   { opacity: 0; transform: translateY(-8px); }
+@keyframes slogan-swap-b {
+  0%, 42%   { opacity: 0; }
+  50%, 92%  { opacity: 1; }
+  100%      { opacity: 0; }
 }
 @keyframes shimmer-text {
   0%   { background-position: 0% center; }
@@ -694,6 +730,7 @@
   overflow: hidden;
 }
 .pageHeroTitle {
+  margin: 0;
   font-family: "Bebas Neue", "Impact", sans-serif;
   font-size: 36px;
   letter-spacing: 3px;
@@ -745,7 +782,7 @@
 }
 .panelHeaderLeft { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .panelTitle {
-  font-family: "Bebas Neue", "Impact", sans-serif;
+  font-family: var(--font-sans, system-ui, -apple-system, sans-serif);
   font-size: 20px;
   letter-spacing: 2px;
   color: var(--sb-text);
@@ -776,7 +813,7 @@
   color: var(--sb-neon);
   padding: 1px 5px;
   border-radius: 3px;
-  font-family: "DM Mono", ui-monospace, monospace;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
 }
 .panelCount {
   color: var(--sb-neon);
@@ -820,7 +857,7 @@
   color: var(--sb-text);
 }
 .dataMono {
-  font-family: "DM Mono", ui-monospace, monospace;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
   font-size: 11px;
 }
 .dataLink {
@@ -834,6 +871,66 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Click-to-expand attack input cell.
+   <details> gives us native disclosure with no JS. Closed state shows the
+   truncated preview as the summary; opened state replaces the preview with
+   a small header label and reveals the full payload in a scrollable
+   monospace block below. */
+.payloadDetails {
+  display: block;
+  max-width: 60ch;
+}
+.payloadSummary {
+  cursor: pointer;
+  list-style: none;
+  max-width: 60ch;
+  color: var(--sb-muted);
+}
+.payloadSummary::-webkit-details-marker { display: none; }
+.payloadDetails[open] > .payloadSummary {
+  color: var(--sb-fg);
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+}
+.payloadDetails[open] > .payloadSummary::before {
+  content: "▾ ";
+  color: var(--sb-accent, currentColor);
+}
+.payloadDetails:not([open]) > .payloadSummary::before {
+  content: "▸ ";
+  color: var(--sb-muted);
+}
+/* Preview text — shown only when closed. */
+.payloadPreview {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: inline;
+  max-width: 56ch;
+}
+.payloadDetails[open] .payloadPreview { display: none; }
+/* Header label — shown only when open. */
+.payloadLabel { display: none; }
+.payloadDetails[open] .payloadLabel { display: inline; }
+.payloadFull {
+  margin: 0;
+  padding: 0.65rem 0.85rem;
+  background: var(--sb-bg-2, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--sb-border, rgba(255, 255, 255, 0.08));
+  border-radius: 6px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 22rem;
+  overflow-y: auto;
+  color: var(--sb-fg);
 }
 
 /* ─── PATCH REVIEW LIST ─── */
@@ -858,7 +955,7 @@
 .reviewBranch {
   color: var(--sb-neon);
   text-decoration: none;
-  font-family: "DM Mono", ui-monospace, monospace;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
   font-size: 13px;
 }
 .reviewBranch:hover { text-decoration: underline; }
@@ -889,7 +986,7 @@
   justify-content: center;
   padding: 8px 16px;
   border-radius: 6px;
-  font-family: "DM Mono", ui-monospace, monospace;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
   font-size: 11px;
   letter-spacing: 2px;
   text-transform: uppercase;
@@ -914,6 +1011,819 @@
   color: var(--sb-danger);
 }
 
+/* ─── KEY/VALUE METADATA GRID ─── */
+.kvGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 18px 24px;
+}
+.kvItem {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.kvLabel {
+  font-size: 9px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--sb-muted);
+}
+.kvValue {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: 13px;
+  color: var(--sb-text);
+  letter-spacing: 0.5px;
+  word-break: break-word;
+}
+.kvValueNeon { color: var(--sb-neon); }
+.kvValueMono {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+}
+
+/* ─── CODE / PREFORMATTED BODY ─── */
+.codeBlock {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--sb-text);
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid var(--sb-border);
+  border-radius: 8px;
+  padding: 14px 16px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  letter-spacing: 0.3px;
+}
+.proseBody {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: 12.5px;
+  line-height: 1.75;
+  color: var(--sb-text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  letter-spacing: 0.2px;
+  margin: 0;
+}
+
+/* ─── ALERT CALLOUT (operator decision required) ─── */
+.alertCallout {
+  position: relative;
+  background:
+    linear-gradient(135deg, rgba(255, 184, 48, 0.06), rgba(255, 61, 107, 0.05));
+  border: 1px solid rgba(255, 184, 48, 0.35);
+  border-radius: 12px;
+  padding: 22px 24px;
+  overflow: hidden;
+  animation: card-in 0.5s ease-out both;
+}
+.alertCallout::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--sb-warn), transparent);
+  opacity: 0.7;
+}
+.alertCallout::after {
+  content: "";
+  position: absolute;
+  top: -40px;
+  right: -40px;
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 184, 48, 0.18), transparent 70%);
+  pointer-events: none;
+}
+.alertCalloutHeader {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.alertCalloutTitle {
+  font-family: var(--font-sans, system-ui, -apple-system, sans-serif);
+  font-size: 20px;
+  letter-spacing: 2.5px;
+  color: var(--sb-warn);
+  text-shadow: 0 0 14px rgba(255, 184, 48, 0.35);
+}
+.alertCalloutBody {
+  position: relative;
+  z-index: 1;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--sb-text);
+  letter-spacing: 0.4px;
+  max-width: 78ch;
+  margin-bottom: 16px;
+}
+.alertCalloutBody code {
+  background: rgba(255, 184, 48, 0.12);
+  color: var(--sb-warn);
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: 11px;
+}
+.alertCalloutActions {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Slightly larger button used inside the alert callout. */
+.btnLg {
+  padding: 10px 22px;
+  font-size: 12px;
+}
+
+/* ─── HEADER STRIP for detail pages (ID + title + status) ─── */
+.detailHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.detailHeadLeft { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.detailEyebrow {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: 10px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--sb-neon);
+  opacity: 0.75;
+}
+.detailTitle {
+  font-family: var(--font-sans, system-ui, -apple-system, sans-serif);
+  font-size: 28px;
+  letter-spacing: 2px;
+  line-height: 1.1;
+  color: var(--sb-text);
+}
+.detailMeta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: var(--sb-muted);
+  letter-spacing: 1px;
+}
+
+/* Tight panel variant used by detail metadata block. */
+.panelTight .panelBody { padding-top: 18px; }
+
+/* External link styling shared across detail pages. */
+.extLink {
+  color: var(--sb-neon);
+  text-decoration: none;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: 12px;
+}
+.extLink:hover { text-decoration: underline; }
+
+@media (prefers-reduced-motion: reduce) {
+  .alertCallout,
+  .panel,
+  .statCard {
+    animation: none;
+  }
+}
+
+/* ─── STATUS BADGE (hero) ─── */
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 14px 7px 12px;
+  border-radius: 22px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  text-decoration: none;
+  border: 1px solid transparent;
+  transition: transform 0.15s, box-shadow 0.2s, border-color 0.2s;
+  cursor: pointer;
+  background: rgba(0, 0, 0, 0.35);
+  white-space: nowrap;
+}
+.statusBadge:hover { transform: translateY(-1px); }
+.statusBadgeRed {
+  color: var(--sb-danger);
+  border-color: rgba(255, 61, 107, 0.55);
+  background: rgba(255, 61, 107, 0.08);
+  box-shadow: 0 0 18px rgba(255, 61, 107, 0.18);
+  animation: status-red-pulse 1.6s ease-in-out infinite;
+}
+.statusBadgeRed:hover {
+  border-color: var(--sb-danger);
+  box-shadow: 0 0 26px rgba(255, 61, 107, 0.4);
+}
+.statusBadgeAmber {
+  color: var(--sb-warn);
+  border-color: rgba(255, 184, 48, 0.55);
+  background: rgba(255, 184, 48, 0.07);
+  box-shadow: 0 0 14px rgba(255, 184, 48, 0.15);
+}
+.statusBadgeAmber:hover {
+  border-color: var(--sb-warn);
+  box-shadow: 0 0 22px rgba(255, 184, 48, 0.32);
+}
+.statusBadgeGreen {
+  color: var(--sb-neon);
+  border-color: rgba(0, 245, 196, 0.4);
+  background: rgba(0, 245, 196, 0.06);
+  cursor: default;
+}
+.statusBadgeDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: inline-block;
+}
+.statusBadgeDotRed {
+  background: var(--sb-danger);
+  box-shadow: 0 0 10px var(--sb-danger);
+  animation: pulse-anim 1.1s infinite;
+}
+.statusBadgeDotAmber {
+  background: var(--sb-warn);
+  box-shadow: 0 0 8px var(--sb-warn);
+  animation: pulse-anim 2.2s infinite;
+}
+.statusBadgeDotGreen {
+  background: var(--sb-neon);
+  box-shadow: 0 0 8px var(--sb-neon);
+}
+.statusBadgeSub {
+  color: var(--sb-muted);
+  letter-spacing: 1.5px;
+  font-size: 10px;
+  padding-left: 8px;
+  margin-left: 4px;
+  border-left: 1px solid var(--sb-border-bright);
+}
+
+.startCampaignInline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 10px;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--sb-neon);
+  border: 1px solid rgba(0, 245, 196, 0.45);
+  background: rgba(0, 245, 196, 0.06);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.startCampaignInline:hover {
+  border-color: var(--sb-neon);
+  background: rgba(0, 245, 196, 0.12);
+  box-shadow: 0 0 14px rgba(0, 245, 196, 0.3);
+}
+.startCampaignInline::before {
+  content: "▶";
+  font-size: 9px;
+  opacity: 0.85;
+}
+.startCampaignInline:disabled,
+.startCampaignInline[aria-disabled="true"] {
+  color: var(--sb-muted);
+  border-color: var(--sb-border-bright);
+  background: rgba(255, 255, 255, 0.02);
+  cursor: not-allowed;
+  box-shadow: none;
+  opacity: 0.6;
+}
+.startCampaignInline:disabled::before,
+.startCampaignInline[aria-disabled="true"]::before {
+  content: "■";
+  opacity: 0.5;
+}
+.startCampaignInline:disabled:hover,
+.startCampaignInline[aria-disabled="true"]:hover {
+  background: rgba(255, 255, 255, 0.02);
+  border-color: var(--sb-border-bright);
+  box-shadow: none;
+}
+
+/* ─── HALT CAMPAIGN BUTTONS ───
+   Mirrors the startCampaign treatments but in danger red so the operator
+   can quick-stop an in-flight campaign at a glance. */
+/* ─── CAMPAIGN DETAIL: empty / generating state ─── */
+.attackEmpty {
+  padding: 1.5rem 1.25rem 1.75rem;
+  border: 1px dashed var(--sb-border-bright);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.015);
+}
+.attackEmptyTitle {
+  font-family: var(--font-sans, system-ui, sans-serif);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--sb-fg);
+  margin-bottom: 4px;
+}
+.attackEmptyMeta {
+  font-family: var(--font-sans, system-ui, sans-serif);
+  font-size: 12.5px;
+  color: var(--sb-muted);
+  max-width: 56ch;
+}
+.attackEmptyBar {
+  position: relative;
+  margin-top: 14px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--sb-border);
+  overflow: hidden;
+}
+.attackEmptyBarFill {
+  position: absolute;
+  inset: 0;
+  width: 30%;
+  background: linear-gradient(90deg, transparent, var(--sb-neon), transparent);
+  animation: attack-empty-slide 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+@keyframes attack-empty-slide {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}
+
+/* ─── CAMPAIGN GROUPS (lifecycle-bucketed list) ─── */
+.campaignGroup {
+  border: 1px solid var(--sb-border);
+  border-radius: 10px;
+  background: var(--sb-card);
+  overflow: hidden;
+}
+.campaignGroupActive {
+  border-color: rgba(255, 61, 107, 0.32);
+  background: rgba(255, 61, 107, 0.03);
+}
+.campaignGroupHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.85rem 1rem;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  border-bottom: 1px solid var(--sb-border);
+}
+.campaignGroupHeader::-webkit-details-marker { display: none; }
+.campaignGroup:not([open]) > .campaignGroupHeader { border-bottom-color: transparent; }
+.campaignGroupCaret {
+  display: inline-flex;
+  width: 14px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.78rem;
+  color: var(--sb-muted);
+  transition: transform 140ms ease;
+}
+.campaignGroup:not([open]) .campaignGroupCaret { transform: rotate(-90deg); }
+.campaignGroupLabel {
+  font-family: var(--font-sans, system-ui, sans-serif);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--sb-fg);
+  letter-spacing: 0.01em;
+}
+.campaignGroupCount {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--sb-muted);
+  padding: 1px 6px;
+  border: 1px solid var(--sb-border-bright);
+  border-radius: 999px;
+}
+.campaignGroupAction {
+  margin-left: auto;
+  display: inline-flex;
+}
+.campaignGroupEmpty {
+  padding: 1rem;
+  font-size: 13px;
+  color: var(--sb-muted);
+  font-family: var(--font-sans, system-ui, sans-serif);
+}
+
+.campaignList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.campaignRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) auto auto auto auto;
+  gap: 0.85rem;
+  align-items: center;
+  padding: 0.7rem 1rem;
+  border-top: 1px solid var(--sb-border);
+  transition: background-color 140ms ease;
+}
+.campaignRow:first-child { border-top: 0; }
+.campaignRow:hover { background: rgba(255, 255, 255, 0.02); }
+.campaignRowSub {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.campaignRowSubText {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12.5px;
+  color: var(--sb-fg);
+}
+.campaignRowSubDitto {
+  display: inline-block;
+  width: 16px;
+  text-align: center;
+  color: var(--sb-muted);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 14px;
+  opacity: 0.55;
+}
+.campaignRowStatus {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+}
+.campaignRowSmoke {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  color: var(--sb-warn);
+  border: 1px solid rgba(255, 184, 48, 0.4);
+  padding: 1px 5px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.campaignRowTime {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  color: var(--sb-muted);
+  white-space: nowrap;
+}
+.campaignRowCost {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  color: var(--sb-fg);
+  white-space: nowrap;
+}
+.campaignRowCostSep,
+.campaignRowCostBudget {
+  color: var(--sb-muted);
+}
+.campaignRowView {
+  font-family: var(--font-sans, system-ui, sans-serif);
+  font-size: 12.5px;
+  color: var(--sb-neon);
+  text-decoration: none;
+  white-space: nowrap;
+  padding: 4px 8px;
+  border-radius: 5px;
+  transition: background-color 140ms ease;
+}
+.campaignRowView:hover { background: rgba(0, 245, 196, 0.08); }
+@media (max-width: 720px) {
+  .campaignRow {
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      "sub view"
+      "status time"
+      "cost cost";
+    gap: 0.35rem 0.85rem;
+  }
+  .campaignRowSub { grid-area: sub; }
+  .campaignRowStatus { grid-area: status; }
+  .campaignRowTime { grid-area: time; }
+  .campaignRowCost { grid-area: cost; }
+  .campaignRowView { grid-area: view; }
+}
+
+/* Halt button — cyberpunk red, distinct from status pill. The 2-step
+   inline-confirm logic lives in the React component; CSS expresses the
+   resulting visual states. */
+.haltCampaignInline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 10px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-family: var(--font-mono, "DM Mono", ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--sb-danger);
+  border: 1px solid rgba(255, 61, 107, 0.55);
+  background: rgba(255, 61, 107, 0.08);
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.haltCampaignInline:hover:not(:disabled) {
+  border-color: var(--sb-danger);
+  background: rgba(255, 61, 107, 0.18);
+  box-shadow: 0 0 14px rgba(255, 61, 107, 0.32);
+}
+.haltCampaignInline:focus-visible {
+  outline: 2px solid var(--sb-danger);
+  outline-offset: 2px;
+}
+.haltCampaignInline:disabled {
+  opacity: 0.55;
+  cursor: progress;
+}
+
+.haltCampaignButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 18px;
+  border-radius: 6px;
+  font-family: var(--font-mono, "DM Mono", ui-monospace, monospace);
+  font-size: 12px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--sb-danger);
+  border: 1px solid rgba(255, 61, 107, 0.55);
+  background: rgba(255, 61, 107, 0.08);
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.haltCampaignButton:hover:not(:disabled) {
+  border-color: var(--sb-danger);
+  background: rgba(255, 61, 107, 0.2);
+  box-shadow: 0 0 18px rgba(255, 61, 107, 0.35);
+}
+.haltCampaignButton:focus-visible {
+  outline: 2px solid var(--sb-danger);
+  outline-offset: 2px;
+}
+.haltCampaignButton:disabled {
+  opacity: 0.55;
+  cursor: progress;
+}
+
+.haltCampaignIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  line-height: 1;
+}
+
+/* Armed: clicked once, waiting for the confirming second click. Hot border
+   + rim-light pulse signal "primed". */
+.haltCampaignArmed {
+  border-color: var(--sb-danger);
+  background: rgba(255, 61, 107, 0.28);
+  color: #fff;
+  box-shadow: 0 0 18px rgba(255, 61, 107, 0.45);
+  animation: halt-armed-pulse 1.4s ease-in-out infinite;
+}
+.haltCampaignPending {
+  border-color: rgba(255, 61, 107, 0.35);
+  color: rgba(255, 255, 255, 0.85);
+}
+@keyframes halt-armed-pulse {
+  0%, 100% { box-shadow: 0 0 14px rgba(255, 61, 107, 0.32); }
+  50%      { box-shadow: 0 0 28px rgba(255, 61, 107, 0.6); }
+}
+
+@keyframes status-red-pulse {
+  0%, 100% { box-shadow: 0 0 18px rgba(255, 61, 107, 0.18); }
+  50%      { box-shadow: 0 0 32px rgba(255, 61, 107, 0.5); }
+}
+
+/* ─── START CAMPAIGN MODAL ─── */
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 5, 10, 0.78);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  animation: modal-fade 0.18s ease-out;
+}
+.modal {
+  position: relative;
+  width: 100%;
+  max-width: 520px;
+  background: linear-gradient(180deg, #11111d 0%, #0d0d17 100%);
+  border: 1px solid var(--sb-border-bright);
+  border-radius: 14px;
+  padding: 28px 28px 24px;
+  box-shadow:
+    0 0 0 1px rgba(0, 245, 196, 0.06),
+    0 24px 60px rgba(0, 0, 0, 0.7),
+    0 0 32px rgba(0, 245, 196, 0.08);
+  animation: modal-rise 0.22s ease-out;
+  color: var(--sb-text);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+}
+.modal::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--sb-neon), transparent);
+  opacity: 0.5;
+}
+.modalEyebrow {
+  font-size: 10px;
+  letter-spacing: 4px;
+  color: var(--sb-neon);
+  text-transform: uppercase;
+  opacity: 0.8;
+  margin-bottom: 6px;
+}
+.modalTitle {
+  font-family: var(--font-sans, system-ui, -apple-system, sans-serif);
+  font-size: 28px;
+  letter-spacing: 2px;
+  color: var(--sb-text);
+  margin-bottom: 18px;
+}
+.modalClose {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid var(--sb-border-bright);
+  background: transparent;
+  color: var(--sb-muted);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  transition: all 0.15s;
+}
+.modalClose:hover {
+  color: var(--sb-danger);
+  border-color: var(--sb-danger);
+}
+.modalField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+.modalLabel {
+  font-size: 10px;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  color: var(--sb-muted);
+}
+.modalInput {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--sb-border-bright);
+  border-radius: 6px;
+  color: var(--sb-text);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: 13px;
+  padding: 10px 12px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.modalInput:focus {
+  border-color: var(--sb-neon);
+  box-shadow: 0 0 0 3px rgba(0, 245, 196, 0.12);
+}
+.modalInput::placeholder {
+  color: var(--sb-muted);
+  opacity: 0.65;
+}
+.modalToggle {
+  display: inline-flex;
+  border: 1px solid var(--sb-border-bright);
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.3);
+  width: fit-content;
+}
+.modalToggleBtn {
+  background: transparent;
+  border: none;
+  padding: 8px 18px;
+  color: var(--sb-muted);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.modalToggleBtn + .modalToggleBtn {
+  border-left: 1px solid var(--sb-border-bright);
+}
+.modalToggleBtnActive {
+  color: var(--sb-neon);
+  background: rgba(0, 245, 196, 0.1);
+}
+.modalHint {
+  font-size: 10px;
+  color: var(--sb-muted);
+  letter-spacing: 0.5px;
+  margin-top: 2px;
+}
+.modalError {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 61, 107, 0.4);
+  background: rgba(255, 61, 107, 0.08);
+  color: var(--sb-danger);
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  word-break: break-word;
+}
+.modalActions {
+  margin-top: 22px;
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+.modalSubmit {
+  padding: 10px 22px;
+  border-radius: 6px;
+  background: rgba(0, 245, 196, 0.1);
+  border: 1px solid rgba(0, 245, 196, 0.55);
+  color: var(--sb-neon);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: 11px;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.modalSubmit:hover:not(:disabled) {
+  border-color: var(--sb-neon);
+  background: rgba(0, 245, 196, 0.18);
+  box-shadow: 0 0 16px rgba(0, 245, 196, 0.35);
+}
+.modalSubmit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.modalCancel {
+  padding: 10px 18px;
+  border-radius: 6px;
+  background: transparent;
+  border: 1px solid var(--sb-border-bright);
+  color: var(--sb-muted);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: 11px;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.modalCancel:hover {
+  color: var(--sb-text);
+  border-color: var(--sb-muted);
+}
+
+@keyframes modal-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes modal-rise {
+  from { opacity: 0; transform: translateY(8px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
 /* ─── DB ERROR (themed) ─── */
 .dbError {
   margin: 24px 40px;
@@ -924,14 +1834,14 @@
   color: var(--sb-text);
 }
 .dbErrorTitle {
-  font-family: "Bebas Neue", "Impact", sans-serif;
+  font-family: var(--font-sans, system-ui, -apple-system, sans-serif);
   font-size: 18px;
   letter-spacing: 2px;
   color: var(--sb-warn);
   margin-bottom: 6px;
 }
 .dbErrorBody {
-  font-family: "DM Mono", ui-monospace, monospace;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
   font-size: 11px;
   color: var(--sb-muted);
   letter-spacing: 0.5px;

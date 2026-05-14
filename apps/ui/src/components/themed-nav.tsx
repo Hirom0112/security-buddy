@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useState } from "react";
+import { StartCampaignModal } from "./start-campaign-modal";
 import styles from "@/app/dashboard.module.css";
 
 const NAV_ITEMS = [
@@ -11,8 +13,13 @@ const NAV_ITEMS = [
   { href: "/patches", label: "Patches" },
 ] as const;
 
-export function ThemedNav() {
+interface ThemedNavProps {
+  hasActiveCampaign?: boolean;
+}
+
+export function ThemedNav({ hasActiveCampaign = false }: ThemedNavProps) {
   const pathname = usePathname() ?? "/";
+  const [modalOpen, setModalOpen] = useState(false);
 
   return (
     <nav className={styles.nav}>
@@ -88,19 +95,30 @@ export function ThemedNav() {
       </div>
 
       <div className={styles.navRight}>
-        <div className={styles.threatBadge}>
-          <span
-            className={styles.pulseDot}
-            style={{ ["--accent" as string]: "var(--sb-neon)" }}
-          />
-          THREAT MONITOR LIVE
-        </div>
+        <button
+          type="button"
+          className={styles.startCampaignInline}
+          onClick={() => setModalOpen(true)}
+          disabled={hasActiveCampaign}
+          aria-disabled={hasActiveCampaign}
+          title={
+            hasActiveCampaign
+              ? "Halt the active campaign first"
+              : "Start a new campaign"
+          }
+        >
+          {hasActiveCampaign ? "Campaign Active" : "Start Campaign"}
+        </button>
         <form action="/logout" method="POST">
           <button type="submit" className={styles.signoutBtn}>
             Sign Out
           </button>
         </form>
       </div>
+      <StartCampaignModal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+      />
     </nav>
   );
 }

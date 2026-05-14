@@ -80,24 +80,26 @@ async def execute_red_team(ctx: dict[str, Any], brief_id: str, request_id: str) 
     rate_limiter: RateLimiter = ctx["rate_limiter"]
     settings = get_settings()
 
+    # Per-attack Judge enqueue (TODO #59): pass a callable into the executor
+    # rather than batching at the end. If the executor crashes or arq's
+    # job_timeout fires mid-run, every attack already in awaiting_judgment
+    # has its Judge job sitting in Redis. enqueue_judge_evaluate dedups on
+    # _job_id="judge:{attack_id}" so a retried executor that re-fires (it
+    # shouldn't, given the AttackStatus gate in run_executor) cannot
+    # double-enqueue.
     result = await run_executor(
         brief_id=brief_uuid,
         session_factory=session_factory,
         settings=settings,
         rate_limiter=rate_limiter,
+        judge_enqueuer=enqueue_judge_evaluate,
+        request_id=request_id,
     )
 
-    # Slice 2 handoff: fan out one judge.evaluate job per attack that landed
-    # in awaiting_judgment. Done here (not inside the executor) to keep
-    # agents/red_team a leaf with no dependency on src.workers.
     awaiting_ids = result.get("awaiting_judgment_attack_ids") or []
-    enqueued_judge_jobs = 0
-    if isinstance(awaiting_ids, list):
-        for raw_id in awaiting_ids:
-            if not isinstance(raw_id, str):
-                continue
-            await enqueue_judge_evaluate(UUID(raw_id), request_id)
-            enqueued_judge_jobs += 1
+    enqueued_judge_jobs = (
+        len(awaiting_ids) if isinstance(awaiting_ids, list) else 0
+    )
 
     log_event(
         "red_team_job_finished",
@@ -170,6 +172,12 @@ class WorkerSettings:
     ]
     max_tries: ClassVar[int] = 3
     keep_result: ClassVar[int] = 300  # 5-minute job deduplication window
+    # arq default is 300s. A 50-variant Red Team run at ~8s/attack overruns
+    # that and the worker raises TimeoutError mid-loop (TODO #59 — observed
+    # on live campaign 60662d6c, 2026-05-12). 1800s is the defensive ceiling;
+    # the fundamental fix is per-attack Judge enqueue in executor.py so a
+    # timeout mid-run no longer strands attacks in awaiting_judgment.
+    job_timeout: ClassVar[int] = 1800
     on_startup: ClassVar[Any] = startup
     on_shutdown: ClassVar[Any] = shutdown
     redis_settings: ClassVar[Any] = RedisSettings.from_dsn(get_settings().redis_url)

@@ -16,6 +16,7 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 import redis.asyncio as aioredis
+import sqlalchemy as sa
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -27,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from src.db.engine import create_engine, create_session_factory
 from src.domain.errors import DomainError
+from src.observability.events import log_event
 from src.observability.middleware import RequestIdMiddleware
 from src.routes.campaigns import router as campaigns_router
 from src.routes.health import router as health_router
@@ -53,6 +55,45 @@ class AppState:
 # ---------------------------------------------------------------------------
 
 
+_ORPHAN_PENDING_THRESHOLD_MINUTES = 60
+
+
+async def _sweep_orphan_pending_campaigns(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """Mark long-pending campaigns as halted on startup.
+
+    A campaign sitting in `status='pending'` for more than
+    ``_ORPHAN_PENDING_THRESHOLD_MINUTES`` is an orphan — either the
+    worker that should have picked it up died, or the enqueue itself
+    failed. Either way it will never make progress and should not show
+    up as "live" on the dashboard. Idempotent: if no such rows exist
+    the UPDATE returns zero rows and we just log the no-op.
+    """
+    async with session_factory() as session:
+        result = await session.execute(
+            sa.text(
+                "UPDATE campaigns"
+                " SET status = 'halted',"
+                "     completed_at = NOW(),"
+                "     version_id = version_id + 1"
+                " WHERE status = 'pending'"
+                "   AND created_at < NOW() - (:threshold || ' minutes')::interval"
+                " RETURNING id"
+            ),
+            {"threshold": str(_ORPHAN_PENDING_THRESHOLD_MINUTES)},
+        )
+        swept_ids = [str(row[0]) for row in result.fetchall()]
+        await session.commit()
+
+    log_event(
+        "campaigns_orphan_sweep",
+        threshold_minutes=_ORPHAN_PENDING_THRESHOLD_MINUTES,
+        swept_count=len(swept_ids),
+        outcome="success",
+    )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Create and tear down shared resources for the application lifecycle."""
@@ -70,6 +111,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     app.state.engine = engine
     app.state.session_factory = session_factory
     app.state.redis = redis_client
+
+    # Startup janitor: any campaign stuck in 'pending' for >60 minutes is
+    # an orphan (created but never picked up by a worker, or a worker
+    # crashed mid-pickup). Flip them to 'halted' so they stop polluting
+    # the dashboard and SSE streams. Idempotent — safe to run on every
+    # boot.
+    await _sweep_orphan_pending_campaigns(session_factory)
 
     yield
 

@@ -3,24 +3,47 @@ import Link from "next/link";
 import { getSession } from "@/lib/auth/session";
 import { ThemedShell } from "@/components/themed-shell";
 import { CampaignStatusBadge } from "@/components/badges";
-import { listCampaigns } from "@/lib/db/queries";
+import { StartCampaignLauncher } from "@/components/start-campaign-launcher";
+import { getActiveCampaign, listCampaigns } from "@/lib/db/queries";
+import { absoluteIso, bucketFor, relativeTime } from "@/lib/time/relative";
+import type { Campaign } from "@/types";
 import styles from "@/app/dashboard.module.css";
 
 export const dynamic = "force-dynamic";
+
+const ACTIVE = new Set(["pending", "in_progress"]);
 
 export default async function CampaignsPage() {
   const session = await getSession();
   if (session === null) redirect("/login");
 
   let campaigns;
+  let hasActive = false;
   try {
-    campaigns = await listCampaigns();
+    [campaigns, hasActive] = await Promise.all([
+      listCampaigns(),
+      getActiveCampaign().then((c) => c !== null),
+    ]);
   } catch (err) {
     return (
       <ThemedShell eyebrow="// Campaigns" title="Campaigns">
         <DbError error={err} />
       </ThemedShell>
     );
+  }
+
+  const groups: Record<"active" | "today" | "yesterday" | "earlier", typeof campaigns> = {
+    active: [],
+    today: [],
+    yesterday: [],
+    earlier: [],
+  };
+  for (const c of campaigns) {
+    if (ACTIVE.has(c.status)) {
+      groups.active.push(c);
+    } else {
+      groups[bucketFor(c.created_at)].push(c);
+    }
   }
 
   const liveCount = campaigns.filter((c) => c.mode === "live").length;
@@ -32,92 +55,123 @@ export default async function CampaignsPage() {
       title="Campaigns"
       meta={
         <>
-          <span>{campaigns.length} TOTAL</span>
+          <span>{campaigns.length} total</span>
           <span className={styles.heroSubDivider} />
-          <span className={styles.sectionMetaActive}>{liveCount} LIVE</span>
+          <span className={styles.sectionMetaActive}>{liveCount} live</span>
           {smokeCount > 0 ? (
             <>
               <span className={styles.heroSubDivider} />
-              <span>{smokeCount} SMOKE</span>
+              <span>{smokeCount} smoke</span>
             </>
           ) : null}
         </>
       }
     >
-      <div className={styles.panel}>
-        <div className={styles.panelHeader}>
-          <div className={styles.panelHeaderLeft}>
-            <div className={styles.panelTitle}>All Campaigns</div>
-            <div className={styles.panelSubtitle}>
-              Start one with{" "}
-              <code>POST /api/v1/campaigns/start</code>. Live runs are counted
-              on the dashboard; smoke runs are tagged and excluded.
-            </div>
-          </div>
-        </div>
-        <div className={styles.panelBody}>
-          {campaigns.length === 0 ? (
-            <div className={styles.panelEmpty}>
-              No campaigns yet. Fire one to populate the dashboard.
-            </div>
-          ) : (
-            <div style={{ overflowX: "auto" }}>
-              <table className={styles.dataTable}>
-                <thead>
-                  <tr>
-                    <th>Subcategory</th>
-                    <th>Status</th>
-                    <th>Budget</th>
-                    <th>Spent</th>
-                    <th>Created</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {campaigns.map((c) => (
-                    <tr key={c.id}>
-                      <td>
-                        <span className={styles.dataMono}>
-                          {c.target_subcategory ?? "—"}
-                        </span>
-                        {c.mode === "smoke" ? (
-                          <span
-                            className="ml-2 inline-flex items-center rounded border border-[#ffb830]/40 bg-[#ffb830]/10 px-1.5 py-0.5 text-[10px] font-mono uppercase tracking-wider text-[#ffb830]"
-                            title="Smoke run — excluded from dashboard stats"
-                          >
-                            smoke
-                          </span>
-                        ) : null}
-                      </td>
-                      <td>
-                        <CampaignStatusBadge status={c.status} />
-                      </td>
-                      <td className={styles.dataMono}>
-                        ${Number(c.budget_usd).toFixed(2)}
-                      </td>
-                      <td className={styles.dataMono}>
-                        ${Number(c.spent_usd).toFixed(2)}
-                      </td>
-                      <td className={`${styles.dataMono} ${styles.dataMuted}`}>
-                        {new Date(c.created_at).toLocaleString()}
-                      </td>
-                      <td>
-                        <Link
-                          href={`/campaigns/${c.id}`}
-                          className={styles.dataLink}
-                        >
-                          View →
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+      <div className={styles.panelStack}>
+        <CampaignGroup
+          label="Active"
+          tone="active"
+          rows={groups.active}
+          emptyMessage="No campaign running."
+          launcher={<StartCampaignLauncher label="+ New Campaign" disabled={hasActive} />}
+        />
+        {groups.today.length > 0 && (
+          <CampaignGroup label="Today" tone="quiet" rows={groups.today} />
+        )}
+        {groups.yesterday.length > 0 && (
+          <CampaignGroup label="Yesterday" tone="quiet" rows={groups.yesterday} collapsedByDefault />
+        )}
+        {groups.earlier.length > 0 && (
+          <CampaignGroup label="Earlier" tone="quiet" rows={groups.earlier} collapsedByDefault />
+        )}
       </div>
     </ThemedShell>
+  );
+}
+
+function CampaignGroup({
+  label,
+  rows,
+  tone,
+  emptyMessage,
+  launcher,
+  collapsedByDefault = false,
+}: {
+  label: string;
+  rows: readonly Campaign[];
+  tone: "active" | "quiet";
+  emptyMessage?: string;
+  launcher?: React.ReactNode;
+  collapsedByDefault?: boolean;
+}) {
+  const showRows = rows.length > 0;
+  const headerCount = rows.length;
+  return (
+    <details
+      className={`${styles.campaignGroup} ${tone === "active" ? styles.campaignGroupActive : ""}`}
+      open={!collapsedByDefault}
+    >
+      <summary className={styles.campaignGroupHeader}>
+        <span className={styles.campaignGroupCaret} aria-hidden>▾</span>
+        <span className={styles.campaignGroupLabel}>{label}</span>
+        <span className={styles.campaignGroupCount}>{headerCount}</span>
+        {launcher !== undefined && (
+          <span className={styles.campaignGroupAction}>{launcher}</span>
+        )}
+      </summary>
+      {showRows ? (
+        <ul className={styles.campaignList}>
+          {rows.map((c, idx) => {
+            const prevSub = idx > 0 ? rows[idx - 1]?.target_subcategory : null;
+            const dedupeSubcategory = prevSub === c.target_subcategory;
+            return (
+              <li key={c.id} className={styles.campaignRow}>
+                <span className={styles.campaignRowSub}>
+                  {dedupeSubcategory ? (
+                    <span className={styles.campaignRowSubDitto} aria-label="same as above">⌒</span>
+                  ) : (
+                    <span className={styles.campaignRowSubText}>
+                      {c.target_subcategory ?? "Orchestrator selecting"}
+                    </span>
+                  )}
+                </span>
+                <span className={styles.campaignRowStatus}>
+                  <CampaignStatusBadge status={c.status} />
+                  {c.mode === "smoke" && (
+                    <span className={styles.campaignRowSmoke}>smoke</span>
+                  )}
+                </span>
+                <time
+                  className={styles.campaignRowTime}
+                  dateTime={absoluteIso(c.created_at)}
+                  title={new Date(c.created_at).toLocaleString()}
+                >
+                  {relativeTime(c.created_at)}
+                </time>
+                <span className={styles.campaignRowCost}>
+                  ${Number(c.spent_usd).toFixed(2)}
+                  <span className={styles.campaignRowCostSep}>/</span>
+                  <span className={styles.campaignRowCostBudget}>
+                    ${Number(c.budget_usd).toFixed(2)}
+                  </span>
+                </span>
+                <Link
+                  href={`/campaigns/${c.id}`}
+                  className={styles.campaignRowView}
+                  aria-label={`View campaign ${c.id}`}
+                >
+                  View ›
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <div className={styles.campaignGroupEmpty}>
+          {emptyMessage ?? "Nothing here."}
+        </div>
+      )}
+    </details>
   );
 }
 

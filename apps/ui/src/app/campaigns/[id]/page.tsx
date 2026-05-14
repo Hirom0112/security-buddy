@@ -1,13 +1,15 @@
 import { notFound, redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
-import { AppShell } from "@/components/app-shell";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ThemedShell } from "@/components/themed-shell";
 import { CampaignStatusBadge, VerdictBadge } from "@/components/badges";
+import { CampaignLiveRefresh } from "@/components/campaign-live-refresh";
+import { HaltCampaignButton } from "@/components/halt-campaign-button";
 import {
   getCampaign,
   listAttacksForCampaign,
   listVerdictsForAttacks,
 } from "@/lib/db/queries";
+import styles from "@/app/dashboard.module.css";
 
 export const dynamic = "force-dynamic";
 
@@ -26,89 +28,148 @@ export default async function CampaignDetailPage({ params }: PageProps) {
   const attacks = await listAttacksForCampaign(id);
   const verdicts = await listVerdictsForAttacks(attacks.map((a) => a.id));
 
-  return (
-    <AppShell>
-      <div className="space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <span>
-                Campaign{" "}
-                <code className="text-sm font-normal text-muted-foreground">
-                  {id.slice(0, 8)}
-                </code>
-              </span>
-              <CampaignStatusBadge status={campaign.status} />
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-4 sm:grid-cols-4 text-sm">
-            <div>
-              <p className="text-xs text-muted-foreground">Subcategory</p>
-              <p className="font-medium">
-                {campaign.target_subcategory ?? "—"}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Budget</p>
-              <p className="tabular-nums">
-                ${Number(campaign.budget_usd).toFixed(2)}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Spent</p>
-              <p className="tabular-nums">
-                ${Number(campaign.spent_usd).toFixed(2)}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Created</p>
-              <p>{new Date(campaign.created_at).toLocaleString()}</p>
-            </div>
-          </CardContent>
-        </Card>
+  const TERMINAL = new Set([
+    "completed",
+    "halted",
+    "budget_exhausted",
+    "no_candidates",
+  ]);
+  const isTerminal = TERMINAL.has(campaign.status);
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">
-              Attacks ({attacks.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+  return (
+    <ThemedShell
+      eyebrow={`// Campaign ${id.slice(0, 8)}`}
+      title={campaign.target_subcategory ?? "Campaign"}
+      meta={
+        <>
+          <CampaignStatusBadge status={campaign.status} />
+          <CampaignLiveRefresh campaignId={id} isTerminal={isTerminal} />
+          {(campaign.status === "pending" ||
+            campaign.status === "in_progress") && (
+            <HaltCampaignButton campaignId={id} variant="primary" />
+          )}
+          <span className={styles.heroSubDivider} />
+          <span>{attacks.length} ATTACKS</span>
+          <span className={styles.heroSubDivider} />
+          <span>{new Date(campaign.created_at).toLocaleString()}</span>
+        </>
+      }
+    >
+      <div className={styles.panelStack}>
+        <div className={`${styles.panel} ${styles.panelTight}`}>
+          <div className={styles.panelHeader}>
+            <div className={styles.panelHeaderLeft}>
+              <div className={styles.panelTitle}>Campaign Metadata</div>
+            </div>
+          </div>
+          <div className={styles.panelBody}>
+            <div className={styles.kvGrid}>
+              <div className={styles.kvItem}>
+                <span className={styles.kvLabel}>ID</span>
+                <span className={`${styles.kvValue} ${styles.kvValueMono}`}>
+                  {id}
+                </span>
+              </div>
+              <div className={styles.kvItem}>
+                <span className={styles.kvLabel}>Subcategory</span>
+                <span className={`${styles.kvValue} ${styles.kvValueNeon}`}>
+                  {campaign.target_subcategory ?? "—"}
+                </span>
+              </div>
+              <div className={styles.kvItem}>
+                <span className={styles.kvLabel}>Budget</span>
+                <span className={styles.kvValue}>
+                  ${Number(campaign.budget_usd).toFixed(2)}
+                </span>
+              </div>
+              <div className={styles.kvItem}>
+                <span className={styles.kvLabel}>Spent</span>
+                <span className={styles.kvValue}>
+                  ${Number(campaign.spent_usd).toFixed(2)}
+                </span>
+              </div>
+              <div className={styles.kvItem}>
+                <span className={styles.kvLabel}>Created</span>
+                <span className={styles.kvValue}>
+                  {new Date(campaign.created_at).toLocaleString()}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className={styles.panel}>
+          <div className={styles.panelHeader}>
+            <div className={styles.panelHeaderLeft}>
+              <div className={styles.panelTitle}>
+                Attacks
+                <span className={styles.panelCount}>({attacks.length})</span>
+              </div>
+            </div>
+          </div>
+          <div className={styles.panelBody}>
             {attacks.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No attacks fired yet.
-              </p>
+              <div className={styles.attackEmpty}>
+                <div className={styles.attackEmptyTitle}>
+                  {isTerminal ? "No attacks were fired" : "Generating attacks…"}
+                </div>
+                <div className={styles.attackEmptyMeta}>
+                  {isTerminal
+                    ? "The campaign closed before producing any attack rows. Check the worker logs."
+                    : "The Red Team worker is preparing the brief. Attacks will appear here as they land."}
+                </div>
+                {!isTerminal && (
+                  <div
+                    className={styles.attackEmptyBar}
+                    aria-hidden
+                  >
+                    <span className={styles.attackEmptyBarFill} />
+                  </div>
+                )}
+              </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+              <div style={{ overflowX: "auto" }}>
+                <table className={styles.dataTable}>
                   <thead>
-                    <tr className="border-b text-left text-xs text-muted-foreground">
-                      <th className="py-2 pr-4">Mutation</th>
-                      <th className="py-2 pr-4">Status</th>
-                      <th className="py-2 pr-4">HTTP</th>
-                      <th className="py-2 pr-4">Verdict</th>
-                      <th className="py-2">Input (truncated)</th>
+                    <tr>
+                      <th>Mutation</th>
+                      <th>Status</th>
+                      <th>HTTP</th>
+                      <th>Verdict</th>
+                      <th>Input (truncated)</th>
                     </tr>
                   </thead>
                   <tbody>
                     {attacks.map((a) => {
                       const v = verdicts.get(a.id);
                       return (
-                        <tr key={a.id} className="border-b last:border-0">
-                          <td className="py-2 pr-4 text-xs">
+                        <tr key={a.id}>
+                          <td className={styles.dataMono}>
                             {a.mutation_strategy}
                           </td>
-                          <td className="py-2 pr-4 text-xs text-muted-foreground">
+                          <td className={`${styles.dataMono} ${styles.dataMuted}`}>
                             {a.status.replace(/_/g, " ")}
                           </td>
-                          <td className="py-2 pr-4 tabular-nums text-xs">
+                          <td className={styles.dataMono}>
                             {a.target_response_status ?? "—"}
                           </td>
-                          <td className="py-2 pr-4">
+                          <td>
                             {v ? <VerdictBadge verdict={v.verdict} /> : "—"}
                           </td>
-                          <td className="py-2 max-w-md truncate text-xs text-muted-foreground">
-                            {a.attack_input}
+                          <td className={styles.dataMono}>
+                            <details className={styles.payloadDetails}>
+                              <summary className={styles.payloadSummary}>
+                                <span className={styles.payloadPreview}>
+                                  {a.attack_input}
+                                </span>
+                                <span className={styles.payloadLabel}>
+                                  Attack input
+                                </span>
+                              </summary>
+                              <pre className={styles.payloadFull}>
+                                {a.attack_input}
+                              </pre>
+                            </details>
                           </td>
                         </tr>
                       );
@@ -117,9 +178,9 @@ export default async function CampaignDetailPage({ params }: PageProps) {
                 </table>
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
-    </AppShell>
+    </ThemedShell>
   );
 }

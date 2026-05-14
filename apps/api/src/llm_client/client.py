@@ -25,6 +25,7 @@ from uuid import UUID
 import httpx
 import sqlalchemy as sa
 
+from src.llm_client.pricing import compute_cost_usd
 from src.llm_client.redaction import redact
 from src.llm_client.types import AgentTag, Completion, Message, TokenUsage
 from src.observability.context import get_request_id
@@ -130,7 +131,7 @@ class LLMClient:
         outcome = "success"
         completion_text = ""
         usage = TokenUsage(prompt_tokens=0, completion_tokens=0, total_tokens=0)
-        cost_usd = 0.0
+        cost_decimal: Decimal = Decimal("0")
 
         try:
             async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT) as client:
@@ -165,11 +166,23 @@ class LLMClient:
                     completion_tokens=raw_usage.get("completion_tokens", 0),
                     total_tokens=raw_usage.get("total_tokens", 0),
                 )
-                # OpenRouter returns cost in the usage object under "total_cost"
-                # or as a response header x-openrouter-generation-cost.
-                cost_usd = float(raw_usage.get("total_cost", 0.0))
+                # OpenRouter returns cost in the usage object under "total_cost",
+                # but for some models (notably anthropic/claude-sonnet-4.6) it
+                # returns 0 even when tokens are billed. Prefer the upstream
+                # value when non-zero, otherwise compute from our hardcoded
+                # rate table (src/llm_client/pricing.py).
+                raw_cost = Decimal(str(raw_usage.get("total_cost", 0) or 0))
+                if raw_cost > 0:
+                    cost_decimal = raw_cost
+                else:
+                    cost_decimal = compute_cost_usd(
+                        model,
+                        tokens_in=usage.prompt_tokens,
+                        tokens_out=usage.completion_tokens,
+                    )
 
             completion_hash = _sha256(completion_text) if completion_text else ""
+            cost_usd = float(cost_decimal)
 
             log_event(
                 "llm_call_finished",
@@ -199,7 +212,7 @@ class LLMClient:
                 prompt_hash=prompt_hash,
                 completion_hash=completion_hash,
                 usage=usage,
-                cost_usd=cost_usd,
+                cost_decimal=cost_decimal,
                 duration_ms=duration_ms,
                 outcome=outcome,
             )
@@ -237,7 +250,7 @@ class LLMClient:
         prompt_hash: str,
         completion_hash: str,
         usage: TokenUsage,
-        cost_usd: float,
+        cost_decimal: Decimal,
         duration_ms: float,
         outcome: str,
     ) -> None:
@@ -272,7 +285,7 @@ class LLMClient:
                         "completion_hash": completion_hash or None,
                         "tokens_in": usage.prompt_tokens,
                         "tokens_out": usage.completion_tokens,
-                        "cost_usd": Decimal(str(cost_usd)),
+                        "cost_usd": cost_decimal,
                         "duration_ms": round(duration_ms),
                         "outcome": outcome,
                         "campaign_id": str(tag.campaign_id) if tag.campaign_id else None,

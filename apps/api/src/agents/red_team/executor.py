@@ -24,7 +24,8 @@ Security (CLAUDE.md §4):
 from __future__ import annotations
 
 import json
-from uuid import UUID  # noqa: TC003
+from collections.abc import Awaitable, Callable
+from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker  # noqa: TC002
 
@@ -33,11 +34,20 @@ from src.agents.red_team.rate_limit import CampaignAttackCapReached, RateLimiter
 from src.agents.red_team.seed_loader import load_seeds_for_subcategory
 from src.agents.red_team.target_client import TargetClient, TargetUnavailableError
 from src.agents.red_team.types import MutationStrategyName, SeedAttack, Variant  # noqa: TC001
+from src.domain.attack import AttackStatus
 from src.domain.campaign import BriefStatus, CampaignStatus
 from src.observability.events import log_event
 from src.repositories.attacks import AttackRepository
 from src.repositories.campaigns import CampaignRepository
 from src.settings import Settings  # noqa: TC001
+
+# Callable signature for the optional Judge-enqueue hook. The executor invokes
+# this once per attack that transitions to awaiting_judgment so that Judge
+# evaluation is fanned out incrementally (TODO #59). Kept as a Callable rather
+# than a direct import so that src.agents.red_team remains independent of
+# src.workers (import-linter contract: agents-mutually-independent + no
+# leaf-package may import workers).
+JudgeEnqueuer = Callable[[UUID, str], Awaitable[None]]
 
 # Ordered rotation of mutation strategies applied round-robin across variants.
 _STRATEGY_ROTATION: list[MutationStrategyName] = ["lexical", "structural", "multi_turn"]
@@ -63,6 +73,8 @@ async def run_executor(
     session_factory: async_sessionmaker[AsyncSession],
     settings: Settings,
     rate_limiter: RateLimiter,
+    judge_enqueuer: JudgeEnqueuer | None = None,
+    request_id: str | None = None,
 ) -> dict[str, object]:
     """Execute the Red Team loop for a single campaign brief.
 
@@ -72,15 +84,37 @@ async def run_executor(
         settings: Application settings (target URLs, credentials).
         rate_limiter: Shared outbound rate limiter (enforced before every
             TargetClient.fire_query call).
+        judge_enqueuer: Optional callable invoked once per attack that
+            transitions to awaiting_judgment, taking (attack_id, request_id).
+            Wired by the arq worker to enqueue Judge incrementally (TODO #59).
+            When None, the executor returns awaiting_judgment_attack_ids so
+            callers can fan out themselves (legacy / LangGraph path).
+        request_id: Correlation id passed through to judge_enqueuer. Required
+            when judge_enqueuer is provided; ignored otherwise.
 
     Returns:
         A dict with:
           - completed_attack_count: int
           - halted_reason: str | None (None when all variants completed normally)
+          - awaiting_judgment_attack_ids: list[str] of attack IDs that
+            transitioned to awaiting_judgment during this invocation. When
+            judge_enqueuer is provided, these have ALREADY been enqueued for
+            Judge — callers must not re-enqueue.
+
+    Idempotency for per-attack Judge enqueue (TODO #59):
+        Gating on AttackRepository.create_pending() returning status ==
+        PENDING_EXECUTION means an attack only progresses through the
+        fire-and-enqueue path on its first observation. A retried executor
+        for the same brief sees status awaiting_judgment / judged on the
+        existing rows and skips both firing and enqueueing. arq's
+        _job_id="judge:{attack_id}" in enqueue_judge_evaluate provides a
+        second layer of dedup on the queue side.
 
     The function is idempotent: calling it twice for the same brief_id
     returns early on the second call without any duplicate writes.
     """
+    if judge_enqueuer is not None and request_id is None:
+        raise ValueError("request_id is required when judge_enqueuer is provided")
     campaign_repo = CampaignRepository()
     attack_repo = AttackRepository()
 
@@ -165,6 +199,27 @@ async def run_executor(
         await client.authenticate()
 
         for variant_idx in range(variant_count):
+            # ------------------------------------------------------------------
+            # In-loop halt guard: between attack N and N+1, check whether the
+            # operator flipped the campaign row to HALTED. This is a graceful
+            # exit — the previous attack is already persisted and its Judge
+            # job has been enqueued. No torn writes.
+            # ------------------------------------------------------------------
+            if variant_idx > 0:
+                async with session_factory() as halt_session:
+                    fresh = await campaign_repo.get(halt_session, campaign.id)
+                if fresh is not None and fresh.status == CampaignStatus.HALTED:
+                    log_event(
+                        "red_team_executor_halted",
+                        brief_id=str(brief_id),
+                        campaign_id=str(campaign.id),
+                        variant_index=variant_idx,
+                        completed_attack_count=completed_count,
+                        outcome="halted",
+                    )
+                    halted_reason = "operator_halt"
+                    break
+
             seed = _pick_seed(variant_idx)
             strategy_name = _pick_strategy(variant_idx)
             strategy = get_strategy(strategy_name)
@@ -211,6 +266,21 @@ async def run_executor(
                     attack_metadata=meta,
                 )
                 await session.commit()
+
+            # Idempotency gate for per-attack Judge enqueue (TODO #59):
+            # If the row came back in any status other than pending_execution,
+            # it was already fired on a prior run. Skip both fire AND enqueue
+            # to avoid double-judging.
+            if attack.status != AttackStatus.PENDING_EXECUTION:
+                log_event(
+                    "red_team_attack_skipped_already_executed",
+                    brief_id=str(brief_id),
+                    attack_id=str(attack.id),
+                    variant_index=variant_idx,
+                    existing_status=attack.status.value,
+                    outcome="idempotent_skip",
+                )
+                continue
 
             # ------------------------------------------------------------------
             # Fire query (rate limiter enforced inside TargetClient.fire_query).
@@ -285,6 +355,23 @@ async def run_executor(
                     await session.commit()
                 completed_count += 1
                 awaiting_judgment_ids.append(str(attack.id))
+
+                # Per-attack Judge enqueue (TODO #59 fix): if the executor
+                # later crashes or the arq job_timeout fires, every attack
+                # that already landed in awaiting_judgment has its Judge
+                # job sitting in Redis — no manual recovery required.
+                # arq dedups on _job_id="judge:{attack_id}", so a retried
+                # executor that somehow re-fires would still not double-enqueue.
+                if judge_enqueuer is not None:
+                    assert request_id is not None  # narrowed by the precondition
+                    await judge_enqueuer(attack.id, request_id)
+                    log_event(
+                        "red_team_judge_enqueued",
+                        brief_id=str(brief_id),
+                        attack_id=str(attack.id),
+                        variant_index=variant_idx,
+                        outcome="success",
+                    )
 
     # ------------------------------------------------------------------
     # Step 5: Mark brief and campaign completed (unless halted).

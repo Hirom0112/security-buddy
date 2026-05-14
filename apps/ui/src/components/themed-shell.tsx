@@ -2,10 +2,17 @@
 // all authenticated routes other than the dashboard (which has its own hero).
 // Renders server-side; client interactivity lives in ThemedNav.
 
-import { Bebas_Neue, DM_Mono, Nunito } from "next/font/google";
+import { Bebas_Neue, DM_Mono, Inter, Nunito } from "next/font/google";
 import { ThemedNav } from "@/components/themed-nav";
+import { getActiveCampaign } from "@/lib/db/queries";
 import styles from "@/app/dashboard.module.css";
 
+const inter = Inter({
+  weight: ["400", "500", "600", "700"],
+  subsets: ["latin"],
+  variable: "--font-sans",
+  display: "swap",
+});
 const bebasNeue = Bebas_Neue({
   weight: "400",
   subsets: ["latin"],
@@ -15,7 +22,7 @@ const bebasNeue = Bebas_Neue({
 const dmMono = DM_Mono({
   weight: ["400", "500"],
   subsets: ["latin"],
-  variable: "--font-dm-mono",
+  variable: "--font-mono",
   display: "swap",
 });
 const nunito = Nunito({
@@ -40,15 +47,21 @@ type ThemedShellProps = {
   children: React.ReactNode;
 };
 
-export function ThemedShell({
+export async function ThemedShell({
   eyebrow,
   title,
   meta,
   children,
 }: ThemedShellProps) {
+  let hasActive = false;
+  try {
+    hasActive = (await getActiveCampaign()) !== null;
+  } catch {
+    hasActive = false;
+  }
   return (
     <main
-      className={`${styles.root} ${bebasNeue.variable} ${dmMono.variable} ${nunito.variable}`}
+      className={`${styles.root} ${inter.variable} ${bebasNeue.variable} ${dmMono.variable} ${nunito.variable}`}
     >
       <div className={styles.gridBg} aria-hidden="true" />
       <div className={styles.scanlines} aria-hidden="true" />
@@ -69,7 +82,7 @@ export function ThemedShell({
         />
       ))}
 
-      <ThemedNav />
+      <ThemedNav hasActiveCampaign={hasActive} />
 
       <div className={styles.pageHero}>
         <div className={styles.heroBg} />

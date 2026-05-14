@@ -1,55 +1,62 @@
-import * as React from "react";
-import { Slot } from "@radix-ui/react-slot";
+"use client";
+
+import { forwardRef, type ButtonHTMLAttributes } from "react";
 import { cva, type VariantProps } from "class-variance-authority";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/cn";
+
+// Minimal Button primitive. Variants map to our project's neon/danger/muted
+// vocabulary. Used for primary actions in the dashboard. Status pills and
+// the halt button still own their bespoke styles in dashboard.module.css —
+// those are designed as state expressions, not affordances.
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+  // base
+  [
+    "inline-flex items-center justify-center gap-2 whitespace-nowrap",
+    "rounded-md font-medium",
+    "transition-[border-color,background-color,color] duration-150 ease-out",
+    "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2",
+    "disabled:pointer-events-none disabled:opacity-60",
+  ],
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/90",
-        destructive:
-          "bg-destructive text-destructive-foreground hover:bg-destructive/90",
+        primary:
+          "bg-[var(--sb-neon)] text-[#04111d] hover:brightness-110 focus-visible:outline-[var(--sb-neon)]",
         outline:
-          "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
-        secondary:
-          "bg-secondary text-secondary-foreground hover:bg-secondary/80",
-        ghost: "hover:bg-accent hover:text-accent-foreground",
-        link: "text-primary underline-offset-4 hover:underline",
+          "border border-[var(--sb-border-bright)] bg-transparent text-[var(--sb-fg)] hover:border-[var(--sb-neon)]/60 hover:bg-[var(--sb-neon)]/[0.06] focus-visible:outline-[var(--sb-neon)]",
+        danger:
+          "border border-[var(--sb-danger)]/45 bg-transparent text-[var(--sb-danger)] hover:bg-[var(--sb-danger)]/[0.08] hover:border-[var(--sb-danger)] focus-visible:outline-[var(--sb-danger)]",
+        ghost:
+          "bg-transparent text-[var(--sb-muted)] hover:bg-white/5 hover:text-[var(--sb-fg)] focus-visible:outline-[var(--sb-border-bright)]",
       },
       size: {
-        default: "h-10 px-4 py-2",
-        sm: "h-9 rounded-md px-3",
-        lg: "h-11 rounded-md px-8",
-        icon: "h-10 w-10",
+        sm: "h-7 px-2.5 text-xs",
+        md: "h-9 px-3.5 text-sm",
+        lg: "h-10 px-4 text-sm",
       },
     },
     defaultVariants: {
-      variant: "default",
-      size: "default",
+      variant: "outline",
+      size: "md",
     },
   }
 );
 
 export interface ButtonProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
-    VariantProps<typeof buttonVariants> {
-  asChild?: boolean;
-}
+  extends ButtonHTMLAttributes<HTMLButtonElement>,
+    VariantProps<typeof buttonVariants> {}
 
-const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, asChild = false, ...props }, ref) => {
-    const Comp = asChild ? Slot : "button";
-    return (
-      <Comp
-        className={cn(buttonVariants({ variant, size, className }))}
-        ref={ref}
-        {...props}
-      />
-    );
-  }
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
+  ({ className, variant, size, ...props }, ref) => (
+    <button
+      ref={ref}
+      type={props.type ?? "button"}
+      className={cn(buttonVariants({ variant, size }), className)}
+      {...props}
+    />
+  )
 );
 Button.displayName = "Button";
 
-export { Button, buttonVariants };
+export { buttonVariants };

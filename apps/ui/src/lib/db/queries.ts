@@ -117,6 +117,46 @@ export async function listVerdictsForAttacks(
   return map;
 }
 
+/**
+ * Find the most recent active campaign (in_progress or pending), if any.
+ * Used by the dashboard hero badge to switch into ATTACK MODE.
+ */
+export async function getActiveCampaign(): Promise<Campaign | null> {
+  const sql = getSql();
+  const rows = await sql<Campaign[]>`
+    SELECT
+      c.id::text,
+      c.target_subcategory,
+      c.status,
+      c.mode,
+      c.budget_usd::text,
+      COALESCE(
+        (SELECT SUM(at.cost_usd) FROM agent_traces at WHERE at.campaign_id = c.id),
+        0
+      )::text AS spent_usd,
+      c.created_at,
+      c.completed_at
+    FROM campaigns c
+    WHERE c.status IN ('pending', 'in_progress')
+    ORDER BY c.created_at DESC
+    LIMIT 1
+  `;
+  return rows[0] ?? null;
+}
+
+/**
+ * Count draft vulnerabilities awaiting operator review.
+ */
+export async function countDraftVulnerabilities(): Promise<number> {
+  const sql = getSql();
+  const [row] = await sql<{ n: number }[]>`
+    SELECT COUNT(*)::int AS n
+    FROM vulnerabilities
+    WHERE status = 'draft'
+  `;
+  return row?.n ?? 0;
+}
+
 // ---------------------------------------------------------------------------
 // Vulnerabilities
 // ---------------------------------------------------------------------------

@@ -1,13 +1,12 @@
 import { notFound, redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
-import { AppShell } from "@/components/app-shell";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { ThemedShell } from "@/components/themed-shell";
 import { SeverityBadge, VulnStatusBadge } from "@/components/badges";
 import {
   getVulnerability,
   listPatchesForVulnerability,
 } from "@/lib/db/queries";
+import styles from "@/app/dashboard.module.css";
 import {
   confirmVulnerability,
   dismissVulnerability,
@@ -30,73 +29,93 @@ export default async function VulnerabilityDetailPage({ params }: PageProps) {
   const patches = await listPatchesForVulnerability(id);
 
   return (
-    <AppShell>
-      <div className="space-y-6">
-        <Card>
-          <CardHeader>
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-xs text-muted-foreground">{vuln.vuln_id}</p>
-                <CardTitle className="mt-1 text-xl leading-tight">
-                  {vuln.title}
-                </CardTitle>
-                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                  <SeverityBadge severity={vuln.severity} />
-                  <VulnStatusBadge status={vuln.status} />
-                  <span className="text-muted-foreground">
-                    {new Date(vuln.created_at).toLocaleString()}
-                  </span>
-                </div>
+    <ThemedShell
+      eyebrow={`// ${vuln.vuln_id}`}
+      title={vuln.title}
+      meta={
+        <>
+          <SeverityBadge severity={vuln.severity} />
+          <VulnStatusBadge status={vuln.status} />
+          <span className={styles.heroSubDivider} />
+          <span>{new Date(vuln.created_at).toLocaleString()}</span>
+        </>
+      }
+    >
+      <div className={styles.panelStack}>
+        <div className={`${styles.panel} ${styles.panelTight}`}>
+          <div className={styles.panelHeader}>
+            <div className={styles.panelHeaderLeft}>
+              <div className={styles.panelTitle}>Classification</div>
+            </div>
+          </div>
+          <div className={styles.panelBody}>
+            <div className={styles.kvGrid}>
+              <div className={styles.kvItem}>
+                <span className={styles.kvLabel}>OWASP LLM</span>
+                <span className={`${styles.kvValue} ${styles.kvValueNeon}`}>
+                  {vuln.owasp_llm_id}
+                </span>
+              </div>
+              <div className={styles.kvItem}>
+                <span className={styles.kvLabel}>MITRE ATLAS</span>
+                <span className={styles.kvValue}>
+                  {vuln.mitre_atlas_technique_id}
+                </span>
+              </div>
+              <div className={styles.kvItem}>
+                <span className={styles.kvLabel}>HIPAA</span>
+                <span className={styles.kvValue}>{vuln.hipaa_safeguard}</span>
               </div>
             </div>
-          </CardHeader>
-          <CardContent className="grid gap-4 sm:grid-cols-3 text-xs">
-            <div>
-              <p className="text-muted-foreground">OWASP LLM</p>
-              <p className="font-medium">{vuln.owasp_llm_id}</p>
-            </div>
-            <div>
-              <p className="text-muted-foreground">MITRE ATLAS</p>
-              <p className="font-medium">{vuln.mitre_atlas_technique_id}</p>
-            </div>
-            <div>
-              <p className="text-muted-foreground">HIPAA</p>
-              <p className="font-medium">{vuln.hipaa_safeguard}</p>
-            </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
         {vuln.status === "draft" && (
-          <Card className="border-amber-300 bg-amber-50/40">
-            <CardHeader>
-              <CardTitle className="text-base">
+          <div className={styles.alertCallout}>
+            <div className={styles.alertCalloutHeader}>
+              <span
+                className={styles.pulseDot}
+                style={{ ["--accent" as string]: "var(--sb-warn)" }}
+                aria-hidden="true"
+              />
+              <span className={styles.alertCalloutTitle}>
                 Operator decision required
-              </CardTitle>
-              <p className="text-xs text-muted-foreground">
-                Critical-severity finding. Confirming flips this to{" "}
-                <code>open</code> and queues the Patch Agent. Dismissing
-                acknowledges the alert and leaves status unchanged.
-              </p>
-            </CardHeader>
-            <CardContent>
-              <div className="flex gap-3">
-                <form action={confirmVulnerability}>
-                  <input type="hidden" name="id" value={vuln.id} />
-                  <Button type="submit">Confirm finding</Button>
-                </form>
-                <form action={dismissVulnerability}>
-                  <input type="hidden" name="id" value={vuln.id} />
-                  <Button type="submit" variant="outline">
-                    Dismiss
-                  </Button>
-                </form>
-              </div>
-            </CardContent>
-          </Card>
+              </span>
+            </div>
+            <p className={styles.alertCalloutBody}>
+              Critical-severity finding. Confirming flips this to{" "}
+              <code>open</code> and queues the Patch Agent. Dismissing
+              acknowledges the alert and leaves status unchanged.
+            </p>
+            <div className={styles.alertCalloutActions}>
+              <form action={confirmVulnerability}>
+                <input type="hidden" name="id" value={vuln.id} />
+                <button
+                  type="submit"
+                  className={`${styles.btn} ${styles.btnPrimary} ${styles.btnLg}`}
+                >
+                  Confirm finding
+                </button>
+              </form>
+              <form action={dismissVulnerability}>
+                <input type="hidden" name="id" value={vuln.id} />
+                <button
+                  type="submit"
+                  className={`${styles.btn} ${styles.btnDanger} ${styles.btnLg}`}
+                >
+                  Dismiss
+                </button>
+              </form>
+            </div>
+          </div>
         )}
 
         <Section title="Clinical impact" body={vuln.clinical_impact} />
-        <Section title="Reproduction steps" body={vuln.reproduction_steps} />
+        <Section
+          title="Reproduction steps"
+          body={vuln.reproduction_steps}
+          mono
+        />
         <Section title="Observed behavior" body={vuln.observed_behavior} />
         <Section title="Expected behavior" body={vuln.expected_behavior} />
         <Section
@@ -104,52 +123,73 @@ export default async function VulnerabilityDetailPage({ params }: PageProps) {
           body={vuln.recommended_remediation}
         />
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">
-              Linked patches ({patches.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+        <div className={styles.panel}>
+          <div className={styles.panelHeader}>
+            <div className={styles.panelHeaderLeft}>
+              <div className={styles.panelTitle}>
+                Linked patches
+                <span className={styles.panelCount}>({patches.length})</span>
+              </div>
+            </div>
+          </div>
+          <div className={styles.panelBody}>
             {patches.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
+              <div className={styles.panelEmpty}>
                 No patches opened yet for this vulnerability.
-              </p>
+              </div>
             ) : (
-              <ul className="space-y-2 text-sm">
+              <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
                 {patches.map((p) => (
-                  <li key={p.id} className="flex items-center gap-3">
-                    <a
-                      href={p.pr_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-700 hover:underline"
-                    >
-                      {p.branch_name}
-                    </a>
-                    <span className="text-xs text-muted-foreground">
-                      {p.status.replace(/_/g, " ")}
-                    </span>
+                  <li key={p.id} className={styles.reviewItem}>
+                    <div>
+                      <div className={styles.reviewItemHead}>
+                        <a
+                          href={p.pr_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={styles.reviewBranch}
+                        >
+                          {p.branch_name}
+                        </a>
+                        <span className={styles.dataMuted}>
+                          {p.status.replace(/_/g, " ")}
+                        </span>
+                      </div>
+                    </div>
                   </li>
                 ))}
               </ul>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
-    </AppShell>
+    </ThemedShell>
   );
 }
 
-function Section({ title, body }: { title: string; body: string }) {
+function Section({
+  title,
+  body,
+  mono = false,
+}: {
+  title: string;
+  body: string;
+  mono?: boolean;
+}) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">{title}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <p className="whitespace-pre-wrap text-sm leading-relaxed">{body}</p>
-      </CardContent>
-    </Card>
+    <div className={styles.panel}>
+      <div className={styles.panelHeader}>
+        <div className={styles.panelHeaderLeft}>
+          <div className={styles.panelTitle}>{title}</div>
+        </div>
+      </div>
+      <div className={styles.panelBody}>
+        {mono ? (
+          <pre className={styles.codeBlock}>{body}</pre>
+        ) : (
+          <p className={styles.proseBody}>{body}</p>
+        )}
+      </div>
+    </div>
   );
 }

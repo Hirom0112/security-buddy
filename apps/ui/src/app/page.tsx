@@ -1,17 +1,27 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Suspense } from "react";
-import { Bebas_Neue, DM_Mono, Nunito } from "next/font/google";
+import { Bebas_Neue, DM_Mono, Inter, Nunito } from "next/font/google";
 import { getSession } from "@/lib/auth/session";
 import { ThemedNav } from "@/components/themed-nav";
 import { DashboardHero } from "@/components/dashboard-hero";
 import { CountUp } from "@/components/count-up";
-import { coverageSnapshot, dashboardSummary } from "@/lib/db/queries";
+import {
+  coverageSnapshot,
+  dashboardSummary,
+  getActiveCampaign,
+} from "@/lib/db/queries";
 import type { CoverageRow, DashboardSummary } from "@/types";
 import styles from "./dashboard.module.css";
 
 export const dynamic = "force-dynamic";
 
+const inter = Inter({
+  weight: ["400", "500", "600", "700"],
+  subsets: ["latin"],
+  variable: "--font-sans",
+  display: "swap",
+});
 const bebasNeue = Bebas_Neue({
   weight: "400",
   subsets: ["latin"],
@@ -21,7 +31,7 @@ const bebasNeue = Bebas_Neue({
 const dmMono = DM_Mono({
   weight: ["400", "500"],
   subsets: ["latin"],
-  variable: "--font-dm-mono",
+  variable: "--font-mono",
   display: "swap",
 });
 const nunito = Nunito({
@@ -43,9 +53,16 @@ export default async function DashboardPage() {
   const session = await getSession();
   if (session === null) redirect("/login");
 
+  let hasActive = false;
+  try {
+    hasActive = (await getActiveCampaign()) !== null;
+  } catch {
+    hasActive = false;
+  }
+
   return (
     <main
-      className={`${styles.root} ${bebasNeue.variable} ${dmMono.variable} ${nunito.variable}`}
+      className={`${styles.root} ${inter.variable} ${bebasNeue.variable} ${dmMono.variable} ${nunito.variable}`}
     >
       <div className={styles.gridBg} aria-hidden="true" />
       <div className={styles.scanlines} aria-hidden="true" />
@@ -66,7 +83,7 @@ export default async function DashboardPage() {
         />
       ))}
 
-      <ThemedNav />
+      <ThemedNav hasActiveCampaign={hasActive} />
       <DashboardHero />
 
       <Suspense fallback={<DashboardSkeleton />}>
@@ -142,8 +159,12 @@ async function DashboardContent() {
           </div>
         </div>
 
-        {/* Open Vulnerabilities */}
-        <div className={`${styles.statCard} ${styles.statCardVulns}`}>
+        {/* Open Vulnerabilities — primary treatment when there's something to act on */}
+        <div
+          className={`${styles.statCard} ${styles.statCardVulns} ${
+            openVulns > 0 ? styles.statCardPrimary : styles.statCardMuted
+          }`}
+        >
           <div className={styles.statLabel}>
             <svg className={styles.statIcon} viewBox="0 0 16 16" fill="none">
               <path

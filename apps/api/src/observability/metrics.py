@@ -24,6 +24,14 @@ LLM_CALL_DURATION = Histogram(
     buckets=(0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0),
 )
 
+# --- Campaign lifecycle (Slice 1+) ---
+
+CAMPAIGNS_HALTED_TOTAL = Counter(
+    "security_buddy_campaigns_halted_total",
+    "Number of campaigns halted via the operator HALT endpoint",
+    labelnames=["from_status"],
+)
+
 # --- Placeholders for Slice 1+ metrics (not yet instrumented) ---
 # ATTACKS_TOTAL          = Counter(...)  # Slice 1
 # VERDICTS_TOTAL         = Counter(...)  # Slice 2

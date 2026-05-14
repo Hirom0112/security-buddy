@@ -140,6 +140,65 @@ class CampaignRepository:
             f"expected {expected_version_id}, found {existing['version_id']}"
         )
 
+    async def halt(
+        self,
+        session: AsyncSession,
+        *,
+        campaign_id: UUID,
+        expected_version_id: int,
+    ) -> Campaign:
+        """Halt an in-flight campaign via optimistic locking.
+
+        Only allowed from ``pending`` or ``in_progress``. Sets
+        ``status='halted'`` and ``completed_at=now()`` and increments
+        ``version_id``. Any other current state raises ``ConflictError``.
+
+        The halt is a request, not a kill — the Red Team worker observes the
+        flipped status on its next in-loop check and exits gracefully after
+        the current attack lands.
+        """
+        result = await session.execute(
+            sa.text(
+                "UPDATE campaigns"
+                " SET status = 'halted',"
+                "     completed_at = now(),"
+                "     version_id = version_id + 1"
+                " WHERE id = :id"
+                "   AND version_id = :expected_version"
+                "   AND status IN ('pending', 'in_progress')"
+                " RETURNING id, status, mode, budget_usd, target_version_id,"
+                "   target_subcategory, created_at, started_at, completed_at,"
+                "   version_id"
+            ),
+            {
+                "id": str(campaign_id),
+                "expected_version": expected_version_id,
+            },
+        )
+        row = result.mappings().first()
+        if row is not None:
+            return Campaign.model_validate(dict(row))
+
+        # Distinguish not-found vs version conflict vs invalid state.
+        check = await session.execute(
+            sa.text(
+                "SELECT status, version_id FROM campaigns WHERE id = :id"
+            ),
+            {"id": str(campaign_id)},
+        )
+        existing = check.mappings().first()
+        if existing is None:
+            raise NotFoundError(f"Campaign {campaign_id} not found")
+        if existing["version_id"] != expected_version_id:
+            raise ConflictError(
+                f"Campaign {campaign_id} version mismatch: "
+                f"expected {expected_version_id}, found {existing['version_id']}"
+            )
+        raise ConflictError(
+            f"Campaign {campaign_id} cannot be halted from status "
+            f"'{existing['status']}' — only pending or in_progress allowed"
+        )
+
     async def set_target_subcategory(
         self,
         session: AsyncSession,

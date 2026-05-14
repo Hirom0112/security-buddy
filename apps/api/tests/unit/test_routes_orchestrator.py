@@ -65,6 +65,13 @@ def _fake_campaign() -> Campaign:
 def client() -> TestClient:
     mock_factory = MagicMock()
     fake_session = AsyncMock()
+    # Default: any .execute().mappings().first() returns None so the
+    # dedup guard in /campaigns/start does not short-circuit. Tests that
+    # need a specific row override this.
+    default_result = MagicMock()
+    default_result.mappings.return_value.first.return_value = None
+    default_result.scalar.return_value = 1  # for _subcategory_exists fallback
+    fake_session.execute = AsyncMock(return_value=default_result)
     mock_factory.return_value.__aenter__ = AsyncMock(return_value=fake_session)
     mock_factory.return_value.__aexit__ = AsyncMock(return_value=None)
 
@@ -124,6 +131,42 @@ def test_start_campaign_422_budget_too_large(client: TestClient) -> None:
 def test_start_campaign_422_negative_budget(client: TestClient) -> None:
     resp = client.post("/api/v1/campaigns/start", json={"budget_usd": "-1.00"})
     assert resp.status_code == 422
+
+
+@patch("src.routes.campaigns.enqueue_orchestrator_tick", new_callable=AsyncMock)
+@patch("src.routes.campaigns.CampaignRepository")
+def test_start_campaign_deduplicates_rapid_double_submit(
+    mock_repo_cls: Any,
+    mock_enqueue: AsyncMock,
+    client: TestClient,
+) -> None:
+    """A second click within the 10s window returns the original id, not a new row."""
+    existing_id = uuid4()
+    existing_created_at = datetime.now(UTC)
+
+    # Override the session.execute to return an existing pending row.
+    factory = app.state.session_factory
+    fake_session = factory.return_value.__aenter__.return_value
+    dup_result = MagicMock()
+    dup_result.mappings.return_value.first.return_value = {
+        "id": existing_id,
+        "created_at": existing_created_at,
+    }
+    fake_session.execute = AsyncMock(return_value=dup_result)
+
+    repo = MagicMock()
+    repo.create = AsyncMock(return_value=_fake_campaign())
+    mock_repo_cls.return_value = repo
+
+    resp = client.post("/api/v1/campaigns/start", json={"budget_usd": "5.00"})
+
+    assert resp.status_code == 202
+    body = resp.json()
+    assert body["campaign_id"] == str(existing_id)
+    assert body["status"] == "pending"
+    # Critically: we did not create a new campaign and did not enqueue a job.
+    repo.create.assert_not_awaited()
+    mock_enqueue.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -239,10 +282,16 @@ def test_github_webhook_missing_signature_rejected(client: TestClient) -> None:
 
 def test_github_webhook_secret_unset_returns_503(client: TestClient) -> None:
     """Fail-closed: no secret configured → no acceptance."""
-    # Drop the env var, clear cache so settings re-read.
-    original = os.environ.pop("GITHUB_WEBHOOK_SECRET", None)
+    # Override the settings dependency to force github_webhook_secret=None.
+    # We can't rely on env-var manipulation because pydantic-settings also
+    # reads apps/api/.env, which carries the real secret in prod-style dev
+    # environments.
+    from src.routes.webhooks import _get_settings
+
+    real_settings = get_settings()
+    stub_settings = real_settings.model_copy(update={"github_webhook_secret": None})
+    app.dependency_overrides[_get_settings] = lambda: stub_settings
     try:
-        get_settings.cache_clear()
         body = json.dumps({"foo": "bar"}).encode()
         resp = client.post(
             "/webhooks/github",
@@ -255,9 +304,7 @@ def test_github_webhook_secret_unset_returns_503(client: TestClient) -> None:
         )
         assert resp.status_code == 503
     finally:
-        if original is not None:
-            os.environ["GITHUB_WEBHOOK_SECRET"] = original
-        get_settings.cache_clear()
+        app.dependency_overrides.pop(_get_settings, None)
 
 
 def test_github_webhook_non_pr_event_ignored(client: TestClient) -> None:
