@@ -43,6 +43,7 @@ from src.workers.orchestrator_worker import orchestrator_tick
 from src.workers.patch_retry_worker import retry_unstable_patch
 from src.workers.patch_worker import propose_patch
 from src.workers.queue import enqueue_judge_evaluate
+from src.workers.wide_sweep_worker import run_wide_sweep
 
 logger = logging.getLogger("security_buddy.workers")
 
@@ -172,6 +173,7 @@ class WorkerSettings:
         retry_unstable_patch,
         run_regression_sweep,
         rerun_single_vulnerability,
+        run_wide_sweep,
     ]
     max_tries: ClassVar[int] = 3
     keep_result: ClassVar[int] = 300  # 5-minute job deduplication window

@@ -152,6 +152,20 @@ export interface VulnerabilityListResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Wide Sweep
+// ---------------------------------------------------------------------------
+
+export type WideSweepBreadth = "critical" | "critical_plus_high" | "all";
+
+export interface WideSweepResult {
+  subcategories: string[];
+  subcategory_count: number;
+  estimated_total_usd: string;
+  sweep_job_id: string;
+  enqueued_at: string;
+}
+
+// ---------------------------------------------------------------------------
 // Regression runs
 // ---------------------------------------------------------------------------
 

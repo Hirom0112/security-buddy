@@ -24,7 +24,7 @@ import time
 from collections.abc import AsyncGenerator, AsyncIterator  # noqa: TC003
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from uuid import UUID  # noqa: TC003
 
 import sqlalchemy as sa
@@ -39,7 +39,11 @@ from src.observability.context import get_request_id
 from src.observability.events import log_event
 from src.observability.metrics import CAMPAIGNS_HALTED_TOTAL
 from src.repositories.campaigns import CampaignRepository
-from src.workers.queue import enqueue_orchestrator_tick, enqueue_red_team_execute
+from src.workers.queue import (
+    enqueue_orchestrator_tick,
+    enqueue_red_team_execute,
+    enqueue_wide_sweep,
+)
 
 router = APIRouter(prefix="/api/v1", tags=["campaigns"])
 
@@ -965,4 +969,176 @@ async def campaign_live_status(
         attacks=attacks_buckets,
         verdicts=verdicts_buckets,
         vulnerabilities=vulns_buckets,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Wide Sweep — fire N campaigns back-to-back across a breadth slice.
+#
+# The operator picks a breadth bucket (critical / critical_plus_high / all),
+# we resolve it to a concrete subcategory list from attack_taxonomy, and
+# enqueue a single arq worker job that loops through the list creating one
+# campaign per subcategory with a wall-clock stagger between them.
+#
+# Refuses to start if any campaign is currently pending / in_progress —
+# we don't pile sweeps on top of a live run (CLAUDE.md §5 "no doubling up").
+# ---------------------------------------------------------------------------
+
+
+_WIDE_SWEEP_PRIORITY_FILTERS: dict[str, tuple[str, ...]] = {
+    "critical": ("critical",),
+    "critical_plus_high": ("critical", "high"),
+    "all": ("critical", "high", "medium", "low"),
+}
+
+
+class WideSweepRequest(BaseModel):
+    """Validated body for POST /api/v1/campaigns/sweep."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    breadth: Literal["critical", "critical_plus_high", "all"]
+    budget_per_campaign_usd: Decimal = Field(
+        ...,
+        ge=Decimal("0.10"),
+        le=Decimal("50.00"),
+        description="Per-campaign budget envelope. Worker enforces independently.",
+    )
+    variant_count: int = Field(default=20, ge=1, le=50)
+    stagger_seconds: int = Field(default=10, ge=0, le=300)
+
+
+class WideSweepResponse(BaseModel):
+    """202 Accepted — sweep is queued."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    subcategories: list[str]
+    subcategory_count: int
+    estimated_total_usd: Decimal
+    sweep_job_id: str
+    enqueued_at: datetime
+
+
+async def _resolve_sweep_subcategories(session: AsyncSession, breadth: str) -> list[str]:
+    """Return the subcategory list for the given breadth bucket.
+
+    Ordered deterministically (category ASC, subcategory ASC) so the
+    operator sees the same sequence on repeat runs.
+    """
+    priorities = _WIDE_SWEEP_PRIORITY_FILTERS[breadth]
+    result = await session.execute(
+        sa.text(
+            "SELECT subcategory FROM attack_taxonomy"
+            " WHERE priority = ANY(:priorities)"
+            " ORDER BY category ASC, subcategory ASC"
+        ),
+        {"priorities": list(priorities)},
+    )
+    return [str(row["subcategory"]) for row in result.mappings()]
+
+
+async def _has_active_campaign(session: AsyncSession) -> bool:
+    """True if any campaign is currently 'pending' or 'in_progress'."""
+    result = await session.execute(
+        sa.text("SELECT 1 FROM campaigns WHERE status IN ('pending', 'in_progress') LIMIT 1")
+    )
+    return result.first() is not None
+
+
+@router.post(
+    "/campaigns/sweep",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=WideSweepResponse,
+    summary="Fire N campaigns back-to-back across a breadth slice of the attack surface",
+    description=(
+        "Resolves the requested breadth (critical | critical_plus_high | all) "
+        "into a concrete subcategory list from attack_taxonomy, then enqueues a "
+        "single wide_sweep worker job that creates one campaign per subcategory "
+        "with a wall-clock stagger between them. Refuses with 409 if any "
+        "campaign is currently pending or in_progress."
+    ),
+)
+async def start_wide_sweep(
+    body: WideSweepRequest,
+    request: Request,
+    _operator: Annotated[_OperatorIdentity, Depends(require_session)],
+    db: Annotated[AsyncSession, Depends(_get_db_session)],
+) -> Any:
+    # ------------------------------------------------------------------
+    # Refuse to pile a sweep on top of a live run.
+    # ------------------------------------------------------------------
+    if await _has_active_campaign(db):
+        log_event(
+            "wide_sweep_rejected_active_campaign",
+            breadth=body.breadth,
+            outcome="rejected",
+        )
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content={
+                "type": "https://security-buddy.internal/errors/wide-sweep-active-campaign",
+                "title": "Active Campaign Blocks Wide Sweep",
+                "status": 409,
+                "detail": (
+                    "A campaign is currently pending or in_progress. Wait for "
+                    "it to finish, or halt it from the dashboard, before "
+                    "starting a Wide Sweep."
+                ),
+                "instance": str(request.url),
+            },
+            media_type="application/problem+json",
+        )
+
+    subcategories = await _resolve_sweep_subcategories(db, body.breadth)
+    if not subcategories:
+        log_event(
+            "wide_sweep_rejected_no_subcategories",
+            breadth=body.breadth,
+            outcome="rejected",
+        )
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={
+                "type": "https://security-buddy.internal/errors/wide-sweep-no-subcategories",
+                "title": "No Subcategories Match Breadth",
+                "status": 400,
+                "detail": (
+                    f"breadth '{body.breadth}' resolved to zero subcategories in attack_taxonomy."
+                ),
+                "instance": str(request.url),
+            },
+            media_type="application/problem+json",
+        )
+
+    estimated_total = body.budget_per_campaign_usd * len(subcategories)
+    bucket = int(time.time()) // 60
+    request_id = get_request_id() or ""
+
+    job_id = await enqueue_wide_sweep(
+        subcategories=subcategories,
+        budget_per_campaign_usd=str(body.budget_per_campaign_usd),
+        variant_count=body.variant_count,
+        stagger_seconds=body.stagger_seconds,
+        request_id=request_id,
+        bucket_epoch_minute=bucket,
+    )
+
+    enqueued_at = datetime.now(UTC)
+    log_event(
+        "wide_sweep_enqueued",
+        breadth=body.breadth,
+        subcategory_count=len(subcategories),
+        budget_per_campaign_usd=float(body.budget_per_campaign_usd),
+        budget_total_usd=float(estimated_total),
+        sweep_job_id=job_id,
+        outcome="enqueued",
+    )
+
+    return WideSweepResponse(
+        subcategories=subcategories,
+        subcategory_count=len(subcategories),
+        estimated_total_usd=estimated_total,
+        sweep_job_id=job_id,
+        enqueued_at=enqueued_at,
     )

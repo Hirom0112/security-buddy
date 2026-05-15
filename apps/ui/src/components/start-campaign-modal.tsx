@@ -6,9 +6,15 @@ import {
   loadAttackTaxonomyAction,
   loadRerunCandidatesAction,
   startCampaignAction,
+  startWideSweepAction,
   type StartCampaignActionState,
+  type StartWideSweepActionState,
 } from "@/app/campaigns/actions";
-import type { AttackTaxonomy, VulnerabilitySummary } from "@/types";
+import type {
+  AttackTaxonomy,
+  VulnerabilitySummary,
+  WideSweepBreadth,
+} from "@/types";
 import styles from "@/app/dashboard.module.css";
 
 interface StartCampaignModalProps {
@@ -17,7 +23,17 @@ interface StartCampaignModalProps {
 }
 
 type Mode = "live" | "smoke";
-type Targeting = "new" | "rerun";
+type Targeting = "new" | "rerun" | "sweep";
+
+// Hardcoded breadth bucket sizes mirror the seeded attack_taxonomy
+// distribution (alembic 0003): 4 critical, 9 high, 3 medium, 0 low.
+// If the taxonomy ever shifts, the API still returns the true count in
+// the WideSweepResult — these constants are display-only.
+const SWEEP_BUCKET_COUNTS: Record<WideSweepBreadth, number> = {
+  critical: 4,
+  critical_plus_high: 13,
+  all: 16,
+};
 
 export function StartCampaignModal({ open, onClose }: StartCampaignModalProps) {
   const [budget, setBudget] = useState<string>("5");
@@ -27,6 +43,11 @@ export function StartCampaignModal({ open, onClose }: StartCampaignModalProps) {
   const [subcategory, setSubcategory] = useState<string>("");
   const [vulnId, setVulnId] = useState<string>("");
   const [variantCount, setVariantCount] = useState<string>("20");
+  const [sweepBreadth, setSweepBreadth] =
+    useState<WideSweepBreadth>("critical");
+  const [sweepBudget, setSweepBudget] = useState<string>("1.50");
+  const [sweepVariantCount, setSweepVariantCount] = useState<string>("20");
+  const [sweepStagger, setSweepStagger] = useState<string>("10");
   const [taxonomy, setTaxonomy] = useState<AttackTaxonomy | null>(null);
   const [vulns, setVulns] = useState<VulnerabilitySummary[] | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
@@ -83,7 +104,28 @@ export function StartCampaignModal({ open, onClose }: StartCampaignModalProps) {
 
   if (!open) return null;
 
+  const sweepCount = SWEEP_BUCKET_COUNTS[sweepBreadth];
+  const sweepBudgetNum = parseFloat(sweepBudget);
+  const sweepTotal = Number.isFinite(sweepBudgetNum)
+    ? sweepBudgetNum * sweepCount
+    : 0;
+
   const clientValidate = (): string | null => {
+    if (targeting === "sweep") {
+      const sb = parseFloat(sweepBudget);
+      if (!Number.isFinite(sb) || sb < 0.1 || sb > 50) {
+        return "Wide Sweep per-campaign budget must be between 0.10 and 50.00 USD.";
+      }
+      const sv = parseInt(sweepVariantCount, 10);
+      if (!Number.isFinite(sv) || sv < 1 || sv > 50) {
+        return "Wide Sweep variant count must be between 1 and 50.";
+      }
+      const ss = parseInt(sweepStagger, 10);
+      if (!Number.isFinite(ss) || ss < 0 || ss > 300) {
+        return "Stagger seconds must be between 0 and 300.";
+      }
+      return null;
+    }
     const b = parseFloat(budget);
     if (!Number.isFinite(b) || b < 0.1 || b > 200) {
       return "Budget must be between 0.10 and 200.00 USD.";
@@ -101,6 +143,31 @@ export function StartCampaignModal({ open, onClose }: StartCampaignModalProps) {
       return;
     }
     setError(null);
+
+    if (targeting === "sweep") {
+      // Build a fresh FormData for the sweep action — the modal's hidden
+      // start-campaign inputs are not part of the /campaigns/sweep contract.
+      const sweepForm = new FormData();
+      sweepForm.set("breadth", sweepBreadth);
+      sweepForm.set("budget_per_campaign_usd", sweepBudget);
+      sweepForm.set("variant_count", sweepVariantCount);
+      sweepForm.set("stagger_seconds", sweepStagger);
+      startTransition(async () => {
+        const initial: StartWideSweepActionState = { ok: false };
+        const result = await startWideSweepAction(initial, sweepForm);
+        if (result.ok) {
+          onClose();
+          // Land on the dashboard so the operator can watch campaigns
+          // light up one by one. No single campaign_id to deep-link to.
+          router.push("/");
+          router.refresh();
+          return;
+        }
+        setError(result.error ?? "Failed to start Wide Sweep");
+      });
+      return;
+    }
+
     // Strip the inactive mode's fields so the API's mutual-exclusivity
     // check never fires from a leftover hidden input.
     if (targeting === "rerun") {
@@ -149,6 +216,8 @@ export function StartCampaignModal({ open, onClose }: StartCampaignModalProps) {
         </div>
 
         <form action={submit}>
+          {targeting !== "sweep" && (
+          <>
           <div className={styles.modalField}>
             <label className={styles.modalLabel} htmlFor="sc-budget">
               Budget (USD)
@@ -199,6 +268,9 @@ export function StartCampaignModal({ open, onClose }: StartCampaignModalProps) {
             </div>
             <input type="hidden" name="mode" value={mode} />
           </div>
+          </>
+          )}
+          {/* end non-sweep budget+mode block */}
 
           <div className={styles.modalField}>
             <span className={styles.modalLabel}>Targeting</span>
@@ -229,15 +301,165 @@ export function StartCampaignModal({ open, onClose }: StartCampaignModalProps) {
               >
                 Re-attack regressed vuln
               </button>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={targeting === "sweep"}
+                className={`${styles.modalToggleBtn} ${
+                  targeting === "sweep" ? styles.modalToggleBtnActive : ""
+                }`}
+                onClick={() => setTargeting("sweep")}
+              >
+                Wide Sweep
+              </button>
             </div>
             <div className={styles.modalHint}>
               {targeting === "new"
                 ? "Optionally pin a category/subcategory; otherwise the Orchestrator picks."
-                : "Replay a known vulnerability's exact attack input through all four mutation strategies."}
+                : targeting === "rerun"
+                  ? "Replay a known vulnerability's exact attack input through all four mutation strategies."
+                  : "Fire N campaigns back-to-back across a breadth slice of the attack surface."}
             </div>
           </div>
 
-          {targeting === "new" ? (
+          {targeting === "sweep" ? (
+            <>
+              <div className={styles.modalField}>
+                <span className={styles.modalLabel}>Breadth</span>
+                <div
+                  className={styles.modalToggle}
+                  role="radiogroup"
+                  aria-label="Breadth"
+                >
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={sweepBreadth === "critical"}
+                    className={`${styles.modalToggleBtn} ${
+                      sweepBreadth === "critical"
+                        ? styles.modalToggleBtnActive
+                        : ""
+                    }`}
+                    onClick={() => setSweepBreadth("critical")}
+                  >
+                    CRITICAL only (~{SWEEP_BUCKET_COUNTS.critical} subs)
+                  </button>
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={sweepBreadth === "critical_plus_high"}
+                    className={`${styles.modalToggleBtn} ${
+                      sweepBreadth === "critical_plus_high"
+                        ? styles.modalToggleBtnActive
+                        : ""
+                    }`}
+                    onClick={() => setSweepBreadth("critical_plus_high")}
+                  >
+                    CRITICAL + HIGH (~{SWEEP_BUCKET_COUNTS.critical_plus_high}{" "}
+                    subs)
+                  </button>
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={sweepBreadth === "all"}
+                    className={`${styles.modalToggleBtn} ${
+                      sweepBreadth === "all"
+                        ? styles.modalToggleBtnActive
+                        : ""
+                    }`}
+                    onClick={() => setSweepBreadth("all")}
+                  >
+                    All {SWEEP_BUCKET_COUNTS.all} subs
+                  </button>
+                </div>
+              </div>
+
+              <div className={styles.modalField}>
+                <label
+                  className={styles.modalLabel}
+                  htmlFor="sc-sweep-budget"
+                >
+                  Budget per campaign (USD)
+                </label>
+                <input
+                  id="sc-sweep-budget"
+                  type="number"
+                  min={0.1}
+                  max={50}
+                  step={0.1}
+                  required
+                  value={sweepBudget}
+                  onChange={(e) => setSweepBudget(e.target.value)}
+                  className={styles.modalInput}
+                />
+                <div className={styles.modalHint}>
+                  Each campaign is capped at this amount independently.
+                </div>
+              </div>
+
+              <div className={styles.modalField}>
+                <label
+                  className={styles.modalLabel}
+                  htmlFor="sc-sweep-variants"
+                >
+                  Variants per campaign
+                </label>
+                <input
+                  id="sc-sweep-variants"
+                  type="number"
+                  min={1}
+                  max={50}
+                  step={1}
+                  value={sweepVariantCount}
+                  onChange={(e) => setSweepVariantCount(e.target.value)}
+                  className={styles.modalInput}
+                />
+              </div>
+
+              <div className={styles.modalField}>
+                <label
+                  className={styles.modalLabel}
+                  htmlFor="sc-sweep-stagger"
+                >
+                  Stagger (seconds)
+                </label>
+                <input
+                  id="sc-sweep-stagger"
+                  type="number"
+                  min={0}
+                  max={300}
+                  step={1}
+                  value={sweepStagger}
+                  onChange={(e) => setSweepStagger(e.target.value)}
+                  className={styles.modalInput}
+                />
+                <div className={styles.modalHint}>
+                  Wall-clock pause between campaigns. Lets you halt mid-sweep
+                  and keeps OpenRouter rate limits happy.
+                </div>
+              </div>
+
+              <div
+                className={styles.modalError}
+                role="note"
+                style={{
+                  background: "rgba(255, 215, 0, 0.08)",
+                  borderColor: "rgba(255, 215, 0, 0.45)",
+                  color: "#d8b800",
+                }}
+              >
+                <strong>WARNING:</strong> This will fire {sweepCount} campaigns
+                back-to-back, each making up to {sweepVariantCount} attacks
+                against the live target.{" "}
+                {sweepCount} × ${sweepBudgetNum.toFixed(2)} ={" "}
+                <strong>${sweepTotal.toFixed(2)}</strong> estimated total.
+                Make sure your budget supports this. Each campaign runs to
+                completion before the next starts (staggered by {sweepStagger}s
+                to avoid OpenRouter rate limits). Halt any campaign mid-sweep
+                via the dashboard if you need to abort.
+              </div>
+            </>
+          ) : targeting === "new" ? (
             <>
               <div className={styles.modalField}>
                 <label className={styles.modalLabel} htmlFor="sc-category">
@@ -369,7 +591,13 @@ export function StartCampaignModal({ open, onClose }: StartCampaignModalProps) {
               className={styles.modalSubmit}
               disabled={isPending || loading}
             >
-              {isPending ? "Starting…" : "Launch"}
+              {isPending
+                ? targeting === "sweep"
+                  ? "Launching Sweep…"
+                  : "Starting…"
+                : targeting === "sweep"
+                  ? "Launch Sweep"
+                  : "Launch"}
             </button>
           </div>
         </form>

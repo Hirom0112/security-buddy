@@ -6,7 +6,12 @@
 // browser) — we pass the operator session cookie forward when present.
 
 import { env } from "@/lib/env";
-import type { AttackTaxonomy, VulnerabilityListResponse } from "@/types";
+import type {
+  AttackTaxonomy,
+  VulnerabilityListResponse,
+  WideSweepBreadth,
+  WideSweepResult,
+} from "@/types";
 
 export class ApiError extends Error {
   constructor(
@@ -121,6 +126,49 @@ export async function startCampaign(
   const data: unknown = await resp.json();
   if (!isStartCampaignResult(data)) {
     throw new ApiError("Unexpected response from /api/v1/campaigns/start", 500);
+  }
+  return data;
+}
+
+// ---------------------------------------------------------------------------
+// Wide Sweep — fire N campaigns back-to-back across a breadth slice.
+// ---------------------------------------------------------------------------
+
+export interface StartWideSweepInput {
+  breadth: WideSweepBreadth;
+  budget_per_campaign_usd: number;
+  variant_count: number;
+  stagger_seconds: number;
+}
+
+function isWideSweepResult(v: unknown): v is WideSweepResult {
+  if (v === null || typeof v !== "object") return false;
+  const o = v as Record<string, unknown>;
+  return (
+    Array.isArray(o["subcategories"]) &&
+    typeof o["subcategory_count"] === "number" &&
+    typeof o["estimated_total_usd"] === "string" &&
+    typeof o["sweep_job_id"] === "string" &&
+    typeof o["enqueued_at"] === "string"
+  );
+}
+
+export async function startWideSweep(
+  input: StartWideSweepInput
+): Promise<WideSweepResult> {
+  const body: Record<string, unknown> = {
+    breadth: input.breadth,
+    budget_per_campaign_usd: input.budget_per_campaign_usd.toFixed(2),
+    variant_count: input.variant_count,
+    stagger_seconds: input.stagger_seconds,
+  };
+  const resp = await apiFetch("/api/v1/campaigns/sweep", {
+    method: "POST",
+    jsonBody: body,
+  });
+  const data: unknown = await resp.json();
+  if (!isWideSweepResult(data)) {
+    throw new ApiError("Unexpected response from /api/v1/campaigns/sweep", 500);
   }
   return data;
 }

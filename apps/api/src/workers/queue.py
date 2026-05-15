@@ -191,6 +191,40 @@ async def enqueue_patch_propose(vulnerability_id: UUID, request_id: str) -> None
         await redis.close()
 
 
+async def enqueue_wide_sweep(
+    subcategories: list[str],
+    budget_per_campaign_usd: str,
+    variant_count: int,
+    stagger_seconds: int,
+    request_id: str,
+    *,
+    bucket_epoch_minute: int,
+) -> str:
+    """Push a wide_sweep.run job onto the arq Redis queue.
+
+    Idempotency: ``_job_id = f"wide_sweep:{bucket_epoch_minute}"`` where
+    the bucket is ``int(time.time()) // 60``. Two operator clicks on the
+    "Launch Sweep" button within the same minute collapse to a single
+    arq job. Returns the chosen job_id so the route can echo it back.
+    """
+    job_id = f"wide_sweep:{bucket_epoch_minute}"
+    settings = get_settings()
+    redis = await create_pool(RedisSettings.from_dsn(settings.redis_url))
+    try:
+        await redis.enqueue_job(
+            "run_wide_sweep",
+            subcategories,
+            budget_per_campaign_usd,
+            variant_count,
+            stagger_seconds,
+            request_id,
+            _job_id=job_id,
+        )
+    finally:
+        await redis.close()
+    return job_id
+
+
 async def enqueue_judge_evaluate(attack_id: UUID, request_id: str) -> None:
     """Push a judge.evaluate job onto the arq Redis queue.
 

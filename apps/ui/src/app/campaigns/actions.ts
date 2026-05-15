@@ -7,8 +7,13 @@ import {
   fetchAttackTaxonomy as apiFetchAttackTaxonomy,
   fetchRerunCandidates as apiFetchRerunCandidates,
   startCampaign,
+  startWideSweep,
 } from "@/lib/api/client";
-import type { AttackTaxonomy, VulnerabilitySummary } from "@/types";
+import type {
+  AttackTaxonomy,
+  VulnerabilitySummary,
+  WideSweepBreadth,
+} from "@/types";
 
 // Accepts three mutually-exclusive targeting modes:
 //   1. Orchestrator pick — no targeting fields.
@@ -114,6 +119,68 @@ export async function startCampaignAction(
 // Modal data fetchers — exposed as server actions so the client modal can
 // pull dropdown sources without learning about the API base URL.
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Wide Sweep server action — fire N campaigns back-to-back.
+// ---------------------------------------------------------------------------
+
+const wideSweepSchema = z.object({
+  breadth: z.enum(["critical", "critical_plus_high", "all"]),
+  budget_per_campaign_usd: z.coerce.number().min(0.1).max(50),
+  variant_count: z.coerce.number().int().min(1).max(50).default(20),
+  stagger_seconds: z.coerce.number().int().min(0).max(300).default(10),
+});
+
+export interface StartWideSweepActionState {
+  ok: boolean;
+  error?: string | undefined;
+  sweep_job_id?: string | undefined;
+  subcategory_count?: number | undefined;
+  estimated_total_usd?: string | undefined;
+}
+
+export async function startWideSweepAction(
+  _prev: StartWideSweepActionState,
+  formData: FormData
+): Promise<StartWideSweepActionState> {
+  const raw = {
+    breadth: formData.get("breadth") ?? "",
+    budget_per_campaign_usd: formData.get("budget_per_campaign_usd") ?? "",
+    variant_count: formData.get("variant_count") ?? "20",
+    stagger_seconds: formData.get("stagger_seconds") ?? "10",
+  };
+  const parsed = wideSweepSchema.safeParse(raw);
+  if (!parsed.success) {
+    const first = parsed.error.issues[0];
+    const path = first?.path.join(".") ?? "input";
+    return { ok: false, error: `${path}: ${first?.message ?? "invalid"}` };
+  }
+  const data = parsed.data;
+  try {
+    const result = await startWideSweep({
+      breadth: data.breadth as WideSweepBreadth,
+      budget_per_campaign_usd: data.budget_per_campaign_usd,
+      variant_count: data.variant_count,
+      stagger_seconds: data.stagger_seconds,
+    });
+    revalidatePath("/");
+    revalidatePath("/campaigns");
+    return {
+      ok: true,
+      sweep_job_id: result.sweep_job_id,
+      subcategory_count: result.subcategory_count,
+      estimated_total_usd: result.estimated_total_usd,
+    };
+  } catch (err) {
+    const message =
+      err instanceof ApiError
+        ? err.message
+        : err instanceof Error
+          ? err.message
+          : "Unknown error starting Wide Sweep";
+    return { ok: false, error: message };
+  }
+}
 
 export async function loadAttackTaxonomyAction(): Promise<AttackTaxonomy> {
   return await apiFetchAttackTaxonomy();
