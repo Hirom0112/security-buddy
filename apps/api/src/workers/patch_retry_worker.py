@@ -120,18 +120,21 @@ def build_retry_prompt_user_text(
 
 async def retry_unstable_patch(
     ctx: dict[str, Any],
-    vulnerability_id: str,
+    vulnerability_id: str | UUID,
     request_id: str,
 ) -> dict[str, Any]:
     """Arq job: open a 2nd-attempt patch PR informed by the failed replays."""
     set_request_id(request_id)
+
+    # Accept either shape — arq pickles preserve the type the enqueue used,
+    # and pre-helper enqueues stored UUID objects rather than strings.
+    vuln_uuid = vulnerability_id if isinstance(vulnerability_id, UUID) else UUID(vulnerability_id)
+
     log_event(
         "patch_retry_job_started",
-        vulnerability_id=vulnerability_id,
+        vulnerability_id=str(vuln_uuid),
         outcome="started",
     )
-
-    vuln_uuid = UUID(vulnerability_id)
     session_factory = ctx["session_factory"]
     llm_client: LLMClient = ctx["llm_client"]
     settings: Settings = ctx["settings"]
@@ -139,12 +142,12 @@ async def retry_unstable_patch(
     if settings.github_pat is None or settings.github_fork_repo is None:
         log_event(
             "patch_retry_job_skipped",
-            vulnerability_id=vulnerability_id,
+            vulnerability_id=str(vuln_uuid),
             reason="missing_github_config",
             outcome="skipped",
         )
         return {
-            "vulnerability_id": vulnerability_id,
+            "vulnerability_id": str(vuln_uuid),
             "patch_id": None,
             "skipped_reason": "missing_github_config",
         }
@@ -166,7 +169,7 @@ async def retry_unstable_patch(
 
     log_event(
         "patch_retry_job_finished",
-        vulnerability_id=vulnerability_id,
+        vulnerability_id=str(vuln_uuid),
         patch_id=result["patch_id"],
         pr_url=result["pr_url"],
         skipped_reason=result["skipped_reason"],

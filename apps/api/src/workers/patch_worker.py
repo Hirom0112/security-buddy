@@ -24,19 +24,21 @@ from src.settings import Settings  # noqa: TC001
 
 async def propose_patch(
     ctx: dict[str, Any],
-    vulnerability_id: str,
+    vulnerability_id: str | UUID,
     request_id: str,
 ) -> dict[str, Any]:
     """Arq job: open a GitHub PR proposing a fix for the vulnerability."""
     set_request_id(request_id)
 
+    # Older enqueues (pre-helper) pickled the id as UUID rather than str.
+    # arq retries those jobs forever otherwise — accept either shape.
+    vuln_uuid = vulnerability_id if isinstance(vulnerability_id, UUID) else UUID(vulnerability_id)
+
     log_event(
         "patch_job_started",
-        vulnerability_id=vulnerability_id,
+        vulnerability_id=str(vuln_uuid),
         outcome="started",
     )
-
-    vuln_uuid = UUID(vulnerability_id)
     session_factory = ctx["session_factory"]
     llm_client: LLMClient = ctx["llm_client"]
     settings: Settings = ctx["settings"]
@@ -44,12 +46,12 @@ async def propose_patch(
     if settings.github_pat is None or settings.github_fork_repo is None:
         log_event(
             "patch_job_skipped",
-            vulnerability_id=vulnerability_id,
+            vulnerability_id=str(vuln_uuid),
             reason="missing_github_config",
             outcome="skipped",
         )
         return {
-            "vulnerability_id": vulnerability_id,
+            "vulnerability_id": str(vuln_uuid),
             "patch_id": None,
             "skipped_reason": "missing_github_config",
         }
@@ -70,7 +72,7 @@ async def propose_patch(
         await session.commit()
 
     result = {
-        "vulnerability_id": vulnerability_id,
+        "vulnerability_id": str(vuln_uuid),
         "patch_id": str(outcome.patch_id) if outcome.patch_id else None,
         "branch_name": outcome.branch_name,
         "pr_url": outcome.pr_url,
@@ -79,7 +81,7 @@ async def propose_patch(
 
     log_event(
         "patch_job_finished",
-        vulnerability_id=vulnerability_id,
+        vulnerability_id=str(vuln_uuid),
         patch_id=result["patch_id"],
         pr_url=result["pr_url"],
         skipped_reason=outcome.skipped_reason,
