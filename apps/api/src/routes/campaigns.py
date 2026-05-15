@@ -508,9 +508,7 @@ _SSE_HEARTBEAT_INTERVAL_SECONDS = 15.0
 _SSE_MAX_STREAM_SECONDS = 60 * 30  # hard cap so a stuck campaign never holds a connection forever
 
 
-async def _campaign_snapshot(
-    session: AsyncSession, campaign_id: UUID
-) -> dict[str, Any] | None:
+async def _campaign_snapshot(session: AsyncSession, campaign_id: UUID) -> dict[str, Any] | None:
     """Return a small snapshot used to detect campaign-state changes.
 
     Returns None when the campaign does not exist.
@@ -558,9 +556,7 @@ async def campaign_events(
     campaign_id: UUID,
     request: Request,
     _operator: Annotated[_OperatorIdentity, Depends(require_session)],
-    factory: Annotated[
-        async_sessionmaker[AsyncSession], Depends(_get_session_factory)
-    ],
+    factory: Annotated[async_sessionmaker[AsyncSession], Depends(_get_session_factory)],
 ) -> StreamingResponse:
     """SSE stream emitting one update per detected state change."""
 
@@ -582,7 +578,7 @@ async def campaign_events(
                 if await request.is_disconnected():
                     break
                 if time.monotonic() - started > _SSE_MAX_STREAM_SECONDS:
-                    yield b"event: end\ndata: {\"reason\":\"max_duration\"}\n\n"
+                    yield b'event: end\ndata: {"reason":"max_duration"}\n\n'
                     return
 
                 async with factory() as session:

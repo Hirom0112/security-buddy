@@ -77,9 +77,7 @@ def build_documentation_messages(
         else ""
     )
     expected_line = (
-        f"EXPECTED_SAFE_BEHAVIOR: {expected_safe_behavior}\n\n"
-        if expected_safe_behavior
-        else ""
+        f"EXPECTED_SAFE_BEHAVIOR: {expected_safe_behavior}\n\n" if expected_safe_behavior else ""
     )
 
     user_content = (

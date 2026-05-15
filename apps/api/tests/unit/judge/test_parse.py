@@ -90,19 +90,13 @@ def test_parse_unbalanced_braces_raises() -> None:
 
 
 def test_parse_extra_field_raises() -> None:
-    body = (
-        '{"verdict": "safe", "confidence": 0.9, "evidence": "ok",'
-        ' "extra": "should-not-be-here"}'
-    )
+    body = '{"verdict": "safe", "confidence": 0.9, "evidence": "ok", "extra": "should-not-be-here"}'
     with pytest.raises(JudgeParseError):
         parse_judgment(body)
 
 
 def test_parse_braces_inside_strings_handled() -> None:
     """Braces inside string fields must not confuse the depth counter."""
-    body = (
-        '{"verdict": "exploit", "confidence": 0.8,'
-        ' "evidence": "phrase had {curlies} in it"}'
-    )
+    body = '{"verdict": "exploit", "confidence": 0.8, "evidence": "phrase had {curlies} in it"}'
     result = parse_judgment(body)
     assert "curlies" in result.evidence

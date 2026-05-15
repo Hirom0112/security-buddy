@@ -63,9 +63,7 @@ class GitHubClient:
         http_client: httpx.AsyncClient | None = None,
     ) -> None:
         if "/" not in repo:
-            raise ValueError(
-                "repo must be in 'owner/name' form; got: " + repo
-            )
+            raise ValueError("repo must be in 'owner/name' form; got: " + repo)
         self._token = token
         self._repo = repo
         self._default_branch = default_branch

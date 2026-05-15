@@ -266,17 +266,13 @@ async def _create_campaign(
         await engine.dispose()
 
 
-async def _delete_campaign(
-    session_factory: async_sessionmaker[AsyncSession], cid: str
-) -> None:
+async def _delete_campaign(session_factory: async_sessionmaker[AsyncSession], cid: str) -> None:
     # Use a fresh engine so cleanup is not tied to a connection that may
     # have been left mid-operation by a TestClient-driven request loop.
     engine = create_async_engine(_db_url(), echo=False)
     try:
         async with engine.connect() as conn:
-            await conn.execute(
-                sa_text("DELETE FROM campaigns WHERE id = :id"), {"id": cid}
-            )
+            await conn.execute(sa_text("DELETE FROM campaigns WHERE id = :id"), {"id": cid})
             await conn.commit()
     finally:
         await engine.dispose()
@@ -301,13 +297,15 @@ async def test_route_halt_pending_returns_200(
         try:
             async with verify_engine.connect() as conn:
                 row = (
-                    await conn.execute(
-                        sa_text(
-                            "SELECT status, completed_at FROM campaigns WHERE id = :id"
-                        ),
-                        {"id": cid},
+                    (
+                        await conn.execute(
+                            sa_text("SELECT status, completed_at FROM campaigns WHERE id = :id"),
+                            {"id": cid},
+                        )
                     )
-                ).mappings().first()
+                    .mappings()
+                    .first()
+                )
                 assert row is not None
                 assert row["status"] == "halted"
                 assert row["completed_at"] is not None
@@ -327,9 +325,7 @@ async def test_route_halt_terminal_state_returns_409(
     session_factory: async_sessionmaker[AsyncSession],
     terminal_state: CampaignStatus,
 ) -> None:
-    cid, _ = await _create_campaign(
-        session_factory, status_after_create=terminal_state
-    )
+    cid, _ = await _create_campaign(session_factory, status_after_create=terminal_state)
     try:
         resp = route_client.post(f"/api/v1/campaigns/{cid}/halt")
         assert resp.status_code == 409, resp.text
@@ -453,9 +449,7 @@ async def test_executor_in_loop_guard_exits_on_halt(
 
         router.post(f"{agent_api}/agent/query").mock(side_effect=_agent_handler)
 
-        rate_limiter = RateLimiter(
-            requests_per_second=1000.0, burst=200, campaign_attack_cap=1000
-        )
+        rate_limiter = RateLimiter(requests_per_second=1000.0, burst=200, campaign_attack_cap=1000)
 
         with router:
             result = await run_executor(
@@ -475,11 +469,15 @@ async def test_executor_in_loop_guard_exits_on_halt(
         # DB row remains halted (executor must not overwrite it to COMPLETED).
         async with session_factory() as verify:
             row = (
-                await verify.execute(
-                    sa_text("SELECT status FROM campaigns WHERE id = :id"),
-                    {"id": cid},
+                (
+                    await verify.execute(
+                        sa_text("SELECT status FROM campaigns WHERE id = :id"),
+                        {"id": cid},
+                    )
                 )
-            ).mappings().first()
+                .mappings()
+                .first()
+            )
             assert row is not None
             assert row["status"] == "halted"
     finally:

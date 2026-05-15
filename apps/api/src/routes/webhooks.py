@@ -94,9 +94,7 @@ async def github_webhook(
 
     body = await request.body()
     secret_bytes = settings.github_webhook_secret.get_secret_value().encode()
-    if not _verify_signature(
-        secret=secret_bytes, body=body, header_value=x_hub_signature_256
-    ):
+    if not _verify_signature(secret=secret_bytes, body=body, header_value=x_hub_signature_256):
         log_event(
             "github_webhook_rejected",
             reason="bad_signature",
@@ -148,18 +146,13 @@ async def github_webhook(
     # Slice 5: locate the Patch row by head branch name and flip it to merged.
     # Slice 6 enqueues the regression worker on the same path.
     patch_id: str | None = None
-    factory: async_sessionmaker[AsyncSession] = (
-        request.app.state.session_factory
-    )
+    factory: async_sessionmaker[AsyncSession] = request.app.state.session_factory
     if head_branch is not None:
         async with factory() as session:
             try:
                 repo = PatchRepository()
                 patch = await repo.get_by_branch_name(session, head_branch)
-                if (
-                    patch is not None
-                    and patch.status is PatchStatus.AWAITING_HUMAN_REVIEW
-                ):
+                if patch is not None and patch.status is PatchStatus.AWAITING_HUMAN_REVIEW:
                     updated = await repo.update_status(
                         session,
                         patch_id=patch.id,

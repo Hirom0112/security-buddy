@@ -203,8 +203,7 @@ async def run_judge(
 
 def _wrong_status(attack: Attack) -> ValueError:
     return ValueError(
-        f"Attack {attack.id} is in status '{attack.status.value}', "
-        "expected 'awaiting_judgment'"
+        f"Attack {attack.id} is in status '{attack.status.value}', expected 'awaiting_judgment'"
     )
 
 

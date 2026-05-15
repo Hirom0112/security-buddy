@@ -41,9 +41,7 @@ async def _get_session_factory(
 
 
 async def _get_db_session(
-    factory: Annotated[
-        async_sessionmaker[AsyncSession], Depends(_get_session_factory)
-    ],
+    factory: Annotated[async_sessionmaker[AsyncSession], Depends(_get_session_factory)],
 ) -> AsyncGenerator[AsyncSession, None]:
     async with factory() as session:
         try:
@@ -68,9 +66,7 @@ async def get_patch(
     repo = PatchRepository()
     patch = await repo.get_by_id(session, patch_id)
     if patch is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="patch not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="patch not found")
     return patch
 
 
@@ -83,9 +79,7 @@ async def review_patch(
     repo = PatchRepository()
     patch = await repo.get_by_id(session, patch_id)
     if patch is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="patch not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="patch not found")
     if patch.status is not PatchStatus.AWAITING_HUMAN_REVIEW:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -100,9 +94,7 @@ async def review_patch(
         merged_at_sql=(new_status is PatchStatus.MERGED),
     )
     if updated is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="patch vanished"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="patch vanished")
 
     log_event(
         "patch_reviewed",

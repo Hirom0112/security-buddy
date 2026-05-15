@@ -80,9 +80,7 @@ _SYSTEM_PROMPT = (
 
 def _build_user_prompt(seed: SeedAttack, count: int, rng_seed: int) -> str:
     rubric = seed.judge_rubric_hints or {}
-    trust_boundary = rubric.get("trust_boundaries_at_stake", "") or rubric.get(
-        "trust_boundary", ""
-    )
+    trust_boundary = rubric.get("trust_boundaries_at_stake", "") or rubric.get("trust_boundary", "")
     success = rubric.get("success_criteria", "")
     return (
         f"Generate N={count} distinct variants of the attack below, each "
@@ -143,9 +141,7 @@ class LLMMutationStrategy:
         """Return a new instance bound to a campaign_id for trace attribution."""
         return LLMMutationStrategy(self._llm, campaign_id=campaign_id)
 
-    async def amutate(
-        self, seed: SeedAttack, count: int, rng_seed: int
-    ) -> list[Variant]:
+    async def amutate(self, seed: SeedAttack, count: int, rng_seed: int) -> list[Variant]:
         """Generate up to `count` LLM-authored variants of `seed`.
 
         Returns [] on any failure (refusal, malformed JSON, schema violation,

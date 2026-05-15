@@ -98,9 +98,7 @@ async def run_tick(
     # who set it to zero or below gets no work done.
     # ------------------------------------------------------------------
     spent = await traces_repo.total_cost_for_campaign(session, campaign_id)
-    decision = budget_enforcer.evaluate(
-        spent_usd=spent, budget_usd=campaign.budget_usd
-    )
+    decision = budget_enforcer.evaluate(spent_usd=spent, budget_usd=campaign.budget_usd)
     if decision.should_halt:
         await campaign_repo.update_status(
             session,
@@ -159,14 +157,10 @@ async def run_tick(
     manifest = await manifest_repo.get_active(session)
     manifest_fragment: dict[str, Any] = {}
     if manifest is not None:
-        behaviors = manifest.manifest_json.get(
-            "expected_safe_behaviors_by_subcategory", {}
-        )
+        behaviors = manifest.manifest_json.get("expected_safe_behaviors_by_subcategory", {})
         manifest_fragment = {
             "expected_safe_behavior": behaviors.get(top.subcategory),
-            "primary_attack_endpoint": manifest.manifest_json.get(
-                "primary_attack_endpoint"
-            ),
+            "primary_attack_endpoint": manifest.manifest_json.get("primary_attack_endpoint"),
         }
 
     brief, used_fallback = await generate_brief(

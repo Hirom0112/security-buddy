@@ -68,9 +68,7 @@ class LLMClient:
             try:
                 from langsmith import Client as _LangsmithClient
 
-                self._langsmith_client = _LangsmithClient(
-                    api_key=self._langsmith_api_key
-                )
+                self._langsmith_client = _LangsmithClient(api_key=self._langsmith_api_key)
             except Exception as exc:
                 log_event(
                     "langsmith_client_init_failed",

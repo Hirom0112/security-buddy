@@ -171,9 +171,7 @@ async def run_regressions(
             triggered_by=triggered_by,
         )
 
-        new_status = next_vulnerability_status(
-            outcome=outcome, prior_status=vuln.status
-        )
+        new_status = next_vulnerability_status(outcome=outcome, prior_status=vuln.status)
         if new_status is not vuln.status:
             await vuln_repo.update_status(
                 session,

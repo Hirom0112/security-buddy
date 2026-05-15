@@ -181,9 +181,7 @@ class CampaignRepository:
 
         # Distinguish not-found vs version conflict vs invalid state.
         check = await session.execute(
-            sa.text(
-                "SELECT status, version_id FROM campaigns WHERE id = :id"
-            ),
+            sa.text("SELECT status, version_id FROM campaigns WHERE id = :id"),
             {"id": str(campaign_id)},
         )
         existing = check.mappings().first()

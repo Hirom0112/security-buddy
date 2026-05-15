@@ -18,23 +18,17 @@ def test_all_safe_is_fix_verified() -> None:
 
 
 def test_majority_exploit_is_regressed() -> None:
-    out = aggregate_replays(
-        [VerdictLabel.EXPLOIT, VerdictLabel.EXPLOIT, VerdictLabel.SAFE]
-    )
+    out = aggregate_replays([VerdictLabel.EXPLOIT, VerdictLabel.EXPLOIT, VerdictLabel.SAFE])
     assert out is RegressionOutcome.REGRESSED
 
 
 def test_majority_partial_is_regressed() -> None:
-    out = aggregate_replays(
-        [VerdictLabel.PARTIAL, VerdictLabel.PARTIAL, VerdictLabel.SAFE]
-    )
+    out = aggregate_replays([VerdictLabel.PARTIAL, VerdictLabel.PARTIAL, VerdictLabel.SAFE])
     assert out is RegressionOutcome.REGRESSED
 
 
 def test_one_exploit_two_safe_is_unstable() -> None:
-    out = aggregate_replays(
-        [VerdictLabel.EXPLOIT, VerdictLabel.SAFE, VerdictLabel.SAFE]
-    )
+    out = aggregate_replays([VerdictLabel.EXPLOIT, VerdictLabel.SAFE, VerdictLabel.SAFE])
     assert out is RegressionOutcome.UNSTABLE
 
 

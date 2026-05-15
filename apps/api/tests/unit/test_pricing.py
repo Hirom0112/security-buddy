@@ -68,10 +68,7 @@ class TestUnknownModel:
             sb_logger.removeHandler(handler)
 
         # Exactly one structured pricing_unknown_model event should fire.
-        matching = [
-            r for r in records
-            if r.__dict__.get("event") == "pricing_unknown_model"
-        ]
+        matching = [r for r in records if r.__dict__.get("event") == "pricing_unknown_model"]
         assert len(matching) == 1
         assert matching[0].__dict__.get("model") == "does-not-exist/mystery-1"
         assert matching[0].__dict__.get("outcome") == "failure"

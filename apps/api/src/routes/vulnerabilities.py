@@ -40,9 +40,7 @@ async def _get_session_factory(
 
 
 async def _get_db_session(
-    factory: Annotated[
-        async_sessionmaker[AsyncSession], Depends(_get_session_factory)
-    ],
+    factory: Annotated[async_sessionmaker[AsyncSession], Depends(_get_session_factory)],
 ) -> AsyncGenerator[AsyncSession, None]:
     async with factory() as session:
         try:
@@ -65,9 +63,7 @@ async def get_vulnerability(
     repo = VulnerabilityRepository()
     vuln = await repo.get_by_id(session, vulnerability_id)
     if vuln is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="vulnerability not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="vulnerability not found")
     return vuln
 
 
@@ -81,9 +77,7 @@ async def decide_vulnerability(
     repo = VulnerabilityRepository()
     vuln = await repo.get_by_id(session, vulnerability_id)
     if vuln is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="vulnerability not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="vulnerability not found")
 
     if body.decision == "confirm":
         if vuln.status is not VulnerabilityStatus.DRAFT:

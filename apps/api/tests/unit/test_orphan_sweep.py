@@ -61,7 +61,9 @@ async def test_sweep_no_orphans_is_noop() -> None:
 
 @pytest.mark.asyncio
 async def test_sweep_flips_orphans() -> None:
-    factory, session = _build_factory([("11111111-1111-1111-1111-111111111111",), ("22222222-2222-2222-2222-222222222222",)])
+    factory, session = _build_factory(
+        [("11111111-1111-1111-1111-111111111111",), ("22222222-2222-2222-2222-222222222222",)]
+    )
     await _sweep_orphan_pending_campaigns(factory)
     # The UPDATE is the only statement; commit follows it.
     assert session.execute.await_count == 1

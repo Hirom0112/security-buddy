@@ -21,18 +21,13 @@ if TYPE_CHECKING:
 
     from sqlalchemy.ext.asyncio import AsyncSession
 
-_PATCH_COLS = (
-    "id, vulnerability_id, branch_name, pr_url, status, created_at,"
-    " merged_at, version_id"
-)
+_PATCH_COLS = "id, vulnerability_id, branch_name, pr_url, status, created_at, merged_at, version_id"
 
 
 class PatchRepository:
     """Read and write rows in the patches table."""
 
-    async def get_by_id(
-        self, session: AsyncSession, patch_id: UUID
-    ) -> Patch | None:
+    async def get_by_id(self, session: AsyncSession, patch_id: UUID) -> Patch | None:
         result = await session.execute(
             sa.text(f"SELECT {_PATCH_COLS} FROM patches WHERE id = :id"),  # noqa: S608
             {"id": str(patch_id)},
@@ -56,9 +51,7 @@ class PatchRepository:
         row = result.mappings().first()
         return Patch.model_validate(dict(row)) if row else None
 
-    async def get_by_branch_name(
-        self, session: AsyncSession, branch_name: str
-    ) -> Patch | None:
+    async def get_by_branch_name(self, session: AsyncSession, branch_name: str) -> Patch | None:
         result = await session.execute(
             sa.text(
                 f"SELECT {_PATCH_COLS} FROM patches"  # noqa: S608

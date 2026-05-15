@@ -41,9 +41,7 @@ def resolve_rubric(
     """
     raw_boundaries = manifest_json.get("trust_boundaries")
     if not isinstance(raw_boundaries, list) or not raw_boundaries:
-        raise RubricResolutionError(
-            "manifest_json.trust_boundaries is missing or empty"
-        )
+        raise RubricResolutionError("manifest_json.trust_boundaries is missing or empty")
 
     boundaries = [TrustBoundary.model_validate(b) for b in raw_boundaries]
 

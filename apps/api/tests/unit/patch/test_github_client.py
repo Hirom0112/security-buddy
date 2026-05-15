@@ -34,9 +34,7 @@ async def test_get_default_branch_sha_returns_sha() -> None:
         return _ok({"object": {"sha": "abc123"}})
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as c:
-        client = GitHubClient(
-            token="ghp-fake", repo="owner/repo", http_client=c
-        )
+        client = GitHubClient(token="ghp-fake", repo="owner/repo", http_client=c)
         sha = await client.get_default_branch_sha()
     assert sha == "abc123"
 
@@ -47,9 +45,7 @@ async def test_create_branch_swallows_422_already_exists() -> None:
         return _ok({"message": "Reference already exists"}, status_code=422)
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as c:
-        client = GitHubClient(
-            token="ghp-fake", repo="owner/repo", http_client=c
-        )
+        client = GitHubClient(token="ghp-fake", repo="owner/repo", http_client=c)
         # Should not raise.
         await client.create_branch(branch="feature/x", from_sha="abc123")
 
@@ -60,9 +56,7 @@ async def test_create_branch_raises_on_other_errors() -> None:
         return _ok({"message": "Forbidden"}, status_code=403)
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as c:
-        client = GitHubClient(
-            token="ghp-fake", repo="owner/repo", http_client=c
-        )
+        client = GitHubClient(token="ghp-fake", repo="owner/repo", http_client=c)
         with pytest.raises(GitHubError) as exc:
             await client.create_branch(branch="x", from_sha="abc")
         assert exc.value.status_code == 403
@@ -83,9 +77,7 @@ async def test_put_file_creates_when_missing() -> None:
         return _ok({"commit": {"sha": "deadbeef"}})
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as c:
-        client = GitHubClient(
-            token="ghp-fake", repo="owner/repo", http_client=c
-        )
+        client = GitHubClient(token="ghp-fake", repo="owner/repo", http_client=c)
         sha = await client.put_file(
             branch="security-buddy/vul-0001",
             path="src/x.py",
@@ -107,9 +99,7 @@ async def test_put_file_updates_when_existing() -> None:
         return _ok({"commit": {"sha": "newsha"}})
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as c:
-        client = GitHubClient(
-            token="ghp-fake", repo="owner/repo", http_client=c
-        )
+        client = GitHubClient(token="ghp-fake", repo="owner/repo", http_client=c)
         sha = await client.put_file(
             branch="security-buddy/vul-0001",
             path="src/x.py",
@@ -133,9 +123,7 @@ async def test_open_pull_request_returns_parsed_struct() -> None:
         )
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as c:
-        client = GitHubClient(
-            token="ghp-fake", repo="owner/repo", http_client=c
-        )
+        client = GitHubClient(token="ghp-fake", repo="owner/repo", http_client=c)
         pr: CreatedPullRequest = await client.open_pull_request(
             branch="security-buddy/vul-0001",
             title="title",

@@ -72,9 +72,7 @@ def make_live_replay(
         # 2. Re-fire against the target.
         # ----------------------------------------------------------
         meta_pids = attack.attack_metadata.get("patient_ids", [])
-        patient_ids = (
-            [str(p) for p in meta_pids] if isinstance(meta_pids, list) else []
-        )
+        patient_ids = [str(p) for p in meta_pids] if isinstance(meta_pids, list) else []
         try:
             response = await target_client.fire_query(
                 message=inp.attack_input,

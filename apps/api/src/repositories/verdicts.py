@@ -98,7 +98,5 @@ class VerdictRepository:
         )
         row = result.mappings().first()
         if row is None:
-            raise RuntimeError(
-                "verdicts upsert returned no row — schema or session bug"
-            )
+            raise RuntimeError("verdicts upsert returned no row — schema or session bug")
         return Verdict.model_validate(dict(row))

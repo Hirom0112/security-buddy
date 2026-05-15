@@ -111,9 +111,7 @@ class VulnerabilityRepository:
             {"k": _VULN_ID_LOCK},
         )
 
-        count_row = await session.execute(
-            sa.text("SELECT COUNT(*) AS c FROM vulnerabilities")
-        )
+        count_row = await session.execute(sa.text("SELECT COUNT(*) AS c FROM vulnerabilities"))
         count = int(count_row.mappings().first()["c"])  # type: ignore[index]
         vuln_id = f"VUL-{count + 1:04d}"
 
@@ -154,9 +152,7 @@ class VulnerabilityRepository:
                 "atlas": mitre_atlas_technique_id,
                 "hipaa": hipaa_safeguard,
                 "fw_versions": json.dumps(framework_versions),
-                "target_version_id": (
-                    str(target_version_id) if target_version_id else None
-                ),
+                "target_version_id": (str(target_version_id) if target_version_id else None),
                 "rubric_snapshot": (
                     json.dumps(rubric_snapshot) if rubric_snapshot is not None else None
                 ),
@@ -164,9 +160,7 @@ class VulnerabilityRepository:
         )
         row = result.mappings().first()
         if row is None:
-            raise RuntimeError(
-                "vulnerabilities INSERT returned no row — schema or session bug"
-            )
+            raise RuntimeError("vulnerabilities INSERT returned no row — schema or session bug")
         return Vulnerability.model_validate(dict(row))
 
     async def get_by_id(

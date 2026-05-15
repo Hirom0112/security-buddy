@@ -50,9 +50,7 @@ def build_documentation_graph(
         return DocumentationState(
             verdict_id=state["verdict_id"],
             request_id=state["request_id"],
-            vulnerability_id=(
-                str(outcome.vulnerability_id) if outcome.vulnerability_id else None
-            ),
+            vulnerability_id=(str(outcome.vulnerability_id) if outcome.vulnerability_id else None),
             vuln_id=outcome.vuln_id,
             severity=outcome.severity.value if outcome.severity else None,
             status=outcome.status.value if outcome.status else None,

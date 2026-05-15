@@ -9,10 +9,11 @@ Uses the run_async_migrations pattern required for asyncpg / SQLAlchemy async.
 import asyncio
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
+
+from alembic import context
 
 # Pull the database URL from Pydantic settings — the only authoritative source.
 # get_settings() will raise ValidationError if DATABASE_URL is missing from env,

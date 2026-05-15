@@ -51,9 +51,7 @@ async def write_documentation(
 
     result = {
         "verdict_id": verdict_id,
-        "vulnerability_id": (
-            str(outcome.vulnerability_id) if outcome.vulnerability_id else None
-        ),
+        "vulnerability_id": (str(outcome.vulnerability_id) if outcome.vulnerability_id else None),
         "vuln_id": outcome.vuln_id,
         "severity": outcome.severity.value if outcome.severity else None,
         "status": outcome.status.value if outcome.status else None,
@@ -64,10 +62,7 @@ async def write_documentation(
     # Slice 5 handoff: enqueue the Patch Agent for non-critical findings.
     # Critical-severity drafts are gated until the operator flips them to
     # 'open' from the UI.
-    if (
-        outcome.vulnerability_id is not None
-        and outcome.status is VulnerabilityStatus.OPEN
-    ):
+    if outcome.vulnerability_id is not None and outcome.status is VulnerabilityStatus.OPEN:
         await enqueue_patch_propose(outcome.vulnerability_id, request_id)
         log_event(
             "patch_enqueued_from_documentation",

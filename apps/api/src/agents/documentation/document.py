@@ -140,9 +140,7 @@ async def run_document(
     # ------------------------------------------------------------------
     fw = await taxonomy_repo.get_framework_for_subcategory(session, attack.subcategory)
     if fw is None:
-        raise NotFoundError(
-            f"attack_taxonomy row missing for subcategory '{attack.subcategory}'"
-        )
+        raise NotFoundError(f"attack_taxonomy row missing for subcategory '{attack.subcategory}'")
     framework_mappings, framework_versions = fw
 
     try:
@@ -165,9 +163,7 @@ async def run_document(
     manifest = await manifest_repo.get_active(session)
     expected_safe = None
     if manifest is not None:
-        behaviors = manifest.manifest_json.get(
-            "expected_safe_behaviors_by_subcategory", {}
-        )
+        behaviors = manifest.manifest_json.get("expected_safe_behaviors_by_subcategory", {})
         if isinstance(behaviors, dict):
             expected_safe = behaviors.get(attack.subcategory)
 
@@ -360,8 +356,7 @@ def _fallback_draft(
     boundary_text = ", ".join(violated_ids) if violated_ids else "(unspecified)"
     return VulnerabilityDraft(
         title=(
-            f"[AUTO-DRAFT] Confirmed exploit in {attack_subcategory} — "
-            "Documentation Agent fallback"
+            f"[AUTO-DRAFT] Confirmed exploit in {attack_subcategory} — Documentation Agent fallback"
         ),
         severity=Severity.HIGH,
         clinical_impact=(
@@ -375,9 +370,7 @@ def _fallback_draft(
             "2. Replay the linked attack against the target version.\n"
             "3. Confirm the response matches the Judge's evidence string."
         ),
-        observed_behavior=(
-            f"Judge evidence: {verdict_evidence[:1500] or 'not recorded'}"
-        ),
+        observed_behavior=(f"Judge evidence: {verdict_evidence[:1500] or 'not recorded'}"),
         expected_behavior=(
             f"Trust boundaries {boundary_text} should have held; see the "
             "target manifest for the rubric the verdict was made under."

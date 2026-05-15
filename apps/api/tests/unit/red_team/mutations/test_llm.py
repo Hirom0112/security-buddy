@@ -96,11 +96,7 @@ async def test_amutate_trims_to_count(
     cross_patient_seed: SeedAttack,
 ) -> None:
     payload = json.dumps(
-        {
-            "variants": [
-                {"attack_input": f"v{i}", "transform_label": "t"} for i in range(5)
-            ]
-        }
+        {"variants": [{"attack_input": f"v{i}", "transform_label": "t"} for i in range(5)]}
     )
     llm_client.complete = AsyncMock(return_value=_make_completion(payload))
 
@@ -114,9 +110,7 @@ async def test_amutate_returns_empty_on_refusal(
     llm_client: Any,
     cross_patient_seed: SeedAttack,
 ) -> None:
-    llm_client.complete = AsyncMock(
-        return_value=_make_completion("I cannot help with that.")
-    )
+    llm_client.complete = AsyncMock(return_value=_make_completion("I cannot help with that."))
 
     with patch("src.agents.red_team.mutations.llm.log_event") as mock_log:
         variants = await strategy.amutate(cross_patient_seed, count=3, rng_seed=7)
@@ -167,9 +161,7 @@ async def test_amutate_tags_llm_call_with_agent_and_campaign(
 ) -> None:
     campaign_id = UUID("12345678-1234-5678-1234-567812345678")
     strategy = LLMMutationStrategy(llm_client=llm_client, campaign_id=campaign_id)
-    payload = json.dumps(
-        {"variants": [{"attack_input": "x", "transform_label": "t"}]}
-    )
+    payload = json.dumps({"variants": [{"attack_input": "x", "transform_label": "t"}]})
     llm_client.complete = AsyncMock(return_value=_make_completion(payload))
 
     await strategy.amutate(cross_patient_seed, count=1, rng_seed=5)
@@ -188,11 +180,7 @@ async def test_amutate_variant_metadata_records_rng_seed_and_transform_label(
     cross_patient_seed: SeedAttack,
 ) -> None:
     payload = json.dumps(
-        {
-            "variants": [
-                {"attack_input": "v", "transform_label": "persona_injection"}
-            ]
-        }
+        {"variants": [{"attack_input": "v", "transform_label": "persona_injection"}]}
     )
     llm_client.complete = AsyncMock(return_value=_make_completion(payload))
 

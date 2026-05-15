@@ -74,10 +74,7 @@ async def evaluate_attack(
     # verdict (run_document is idempotent anyway, but we avoid the queue
     # round-trip when nothing changed).
     enqueued_doc_job = False
-    if (
-        outcome.skipped_reason is None
-        and outcome.verdict is Verdict.EXPLOIT
-    ):
+    if outcome.skipped_reason is None and outcome.verdict is Verdict.EXPLOIT:
         await enqueue_documentation_write(outcome.verdict_id, request_id)
         enqueued_doc_job = True
 

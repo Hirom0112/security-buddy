@@ -99,9 +99,7 @@ async def execute_red_team(ctx: dict[str, Any], brief_id: str, request_id: str) 
     )
 
     awaiting_ids = result.get("awaiting_judgment_attack_ids") or []
-    enqueued_judge_jobs = (
-        len(awaiting_ids) if isinstance(awaiting_ids, list) else 0
-    )
+    enqueued_judge_jobs = len(awaiting_ids) if isinstance(awaiting_ids, list) else 0
 
     log_event(
         "red_team_job_finished",

@@ -201,8 +201,7 @@ async def run_executor(
     # otherwise fall back to the deterministic-only rotation so legacy
     # call sites (e.g. the LangGraph node) keep working unchanged.
     rotation = (
-        _STRATEGY_ROTATION_FULL if llm_client is not None
-        else _STRATEGY_ROTATION_DETERMINISTIC
+        _STRATEGY_ROTATION_FULL if llm_client is not None else _STRATEGY_ROTATION_DETERMINISTIC
     )
 
     def _pick_seed(variant_idx: int) -> SeedAttack:
@@ -256,9 +255,7 @@ async def run_executor(
             # forwards rng_seed as a variation hint (not a hard determinism gate).
             rng_seed = int.from_bytes(brief_id.bytes[:4], "big") ^ variant_idx
             if isinstance(strategy, AsyncMutationStrategy):
-                variants: list[Variant] = await strategy.amutate(
-                    seed, count=1, rng_seed=rng_seed
-                )
+                variants: list[Variant] = await strategy.amutate(seed, count=1, rng_seed=rng_seed)
             else:
                 variants = strategy.mutate(seed, count=1, rng_seed=rng_seed)
             if not variants:

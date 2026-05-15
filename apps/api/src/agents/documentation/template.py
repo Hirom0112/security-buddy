@@ -34,11 +34,7 @@ def render_title(*, draft: VulnerabilityDraft, citation: FrameworkCitation) -> s
     hipaa_label = citation.hipaa_safeguard
     if not hipaa_label.startswith("HIPAA"):
         hipaa_label = f"HIPAA §{hipaa_label}"
-    suffix = (
-        f"[{citation.owasp_llm_id} / "
-        f"{citation.mitre_atlas_technique_id} / "
-        f"{hipaa_label}]"
-    )
+    suffix = f"[{citation.owasp_llm_id} / {citation.mitre_atlas_technique_id} / {hipaa_label}]"
     return f"{draft.title} {suffix}"
 
 
@@ -67,9 +63,7 @@ def render_markdown(
     versions_lines = "\n".join(
         f"  - {k}: {v}" for k, v in sorted(citation.framework_versions.items())
     )
-    target_line = (
-        f"**Target version:** `{target_version}`\n" if target_version else ""
-    )
+    target_line = f"**Target version:** `{target_version}`\n" if target_version else ""
 
     return f"""# {title}
 

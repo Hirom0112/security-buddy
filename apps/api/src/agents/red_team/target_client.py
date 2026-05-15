@@ -351,9 +351,7 @@ class TargetClient:
         provider_name = config.get("providerName") or config.get("provider_name")
         self._provider_name = provider_name if isinstance(provider_name, str) else "Provider"
         panel = config.get("patientIds") or config.get("patient_ids") or []
-        self._panel_patient_ids = (
-            [str(pid) for pid in panel] if isinstance(panel, list) else []
-        )
+        self._panel_patient_ids = [str(pid) for pid in panel] if isinstance(panel, list) else []
 
         # Decode the exp claim (never log the full JWT).
         self._jwt_exp = self._decode_jwt_exp(jwt)

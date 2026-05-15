@@ -30,17 +30,17 @@ framework_versions is pinned to:
 per CLAUDE.md §6a and THREAT_MODEL.md §6.
 """
 
-import uuid
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 import sqlalchemy as sa
+
 from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "0003"
-down_revision: Union[str, None] = "0002"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "0002"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 # Pinned framework versions — must match CLAUDE.md §6a
 FRAMEWORK_VERSIONS = {
@@ -350,9 +350,7 @@ def upgrade() -> None:
                 framework_mappings=sa.cast(
                     sa.literal(json.dumps(row["framework_mappings"])), _JSONB()
                 ),
-                framework_versions=sa.cast(
-                    sa.literal(json.dumps(FRAMEWORK_VERSIONS)), _JSONB()
-                ),
+                framework_versions=sa.cast(sa.literal(json.dumps(FRAMEWORK_VERSIONS)), _JSONB()),
                 created_at=sa.func.now(),
             )
             .on_conflict_do_nothing(index_elements=["subcategory"])

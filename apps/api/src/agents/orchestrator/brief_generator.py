@@ -79,8 +79,7 @@ def _build_messages(
     }
     user_content = (
         "The deterministic priority function chose this subcategory. "
-        "Frame the campaign brief.\n\n"
-        + json.dumps(context, sort_keys=True, indent=2)
+        "Frame the campaign brief.\n\n" + json.dumps(context, sort_keys=True, indent=2)
     )
     return [
         Message(role="system", content=_SYSTEM_PROMPT),
@@ -175,9 +174,7 @@ async def generate_brief(
     campaign_id: Any = None,
 ) -> tuple[GeneratedBrief, bool]:
     """Return (brief, used_fallback). True when the deterministic path ran."""
-    messages = _build_messages(
-        priority=priority, row=row, manifest_fragment=manifest_fragment
-    )
+    messages = _build_messages(priority=priority, row=row, manifest_fragment=manifest_fragment)
 
     log_event(
         "orchestrator_brief_started",

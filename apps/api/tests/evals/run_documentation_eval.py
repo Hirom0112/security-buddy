@@ -213,7 +213,9 @@ async def _eval_one(client: LLMClient, fixture: dict[str, Any]) -> RowResult:
 
     predicted = draft.severity.value
     sev = _severity_score(predicted, fixture["expected_severity"])
-    repro = _topic_coverage(draft.reproduction_steps, fixture.get("reproduction_must_include") or [])
+    repro = _topic_coverage(
+        draft.reproduction_steps, fixture.get("reproduction_must_include") or []
+    )
     remediation_text = draft.recommended_remediation + " " + draft.expected_behavior
     rem = _topic_coverage(remediation_text, fixture.get("must_remediate_topics") or [])
 

@@ -69,8 +69,6 @@ class AsyncMutationStrategy(Protocol):
 
     name: MutationStrategyName
 
-    async def amutate(
-        self, seed: SeedAttack, count: int, rng_seed: int
-    ) -> list[Variant]:
+    async def amutate(self, seed: SeedAttack, count: int, rng_seed: int) -> list[Variant]:
         """Async analogue of MutationStrategy.mutate. See that docstring."""
         ...

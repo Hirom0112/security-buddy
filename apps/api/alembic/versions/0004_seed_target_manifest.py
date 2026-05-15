@@ -17,17 +17,18 @@ migration 0003 — see the extensive comment there for why.
 """
 
 import json
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
+
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "0004"
-down_revision: Union[str, None] = "0003"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "0003"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 _TARGET_ID = "openemr-clinical-copilot"
 _VERSION = "1.0.0"
@@ -193,18 +194,14 @@ def upgrade() -> None:
         .values(
             id=sa.func.gen_random_uuid(),
             target_id=_TARGET_ID,
-            manifest_json=sa.cast(
-                sa.literal(json.dumps(_MANIFEST_JSON)), JSONB()
-            ),
+            manifest_json=sa.cast(sa.literal(json.dumps(_MANIFEST_JSON)), JSONB()),
             version=_VERSION,
             created_at=sa.func.now(),
         )
         .on_conflict_do_update(
             index_elements=["target_id"],
             set_={
-                "manifest_json": sa.cast(
-                    sa.literal(json.dumps(_MANIFEST_JSON)), JSONB()
-                ),
+                "manifest_json": sa.cast(sa.literal(json.dumps(_MANIFEST_JSON)), JSONB()),
                 "version": _VERSION,
             },
         )
@@ -216,8 +213,6 @@ def downgrade() -> None:
     """Remove the openemr-clinical-copilot manifest row."""
     conn = op.get_bind()
     conn.execute(
-        sa.text(
-            "DELETE FROM target_manifests WHERE target_id = :target_id"
-        ),
+        sa.text("DELETE FROM target_manifests WHERE target_id = :target_id"),
         {"target_id": _TARGET_ID},
     )
