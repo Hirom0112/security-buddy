@@ -19,7 +19,8 @@ if TYPE_CHECKING:
 
 _COLS = (
     "id, vulnerability_id, target_version_id, replay_count, verdicts,"
-    " outcome, triggered_by, started_at, completed_at"
+    " outcome, triggered_by, started_at, completed_at,"
+    " offending_commit_hash"
 )
 
 
@@ -50,13 +51,16 @@ class RegressionRunRepository:
         verdicts: list[dict[str, Any]],
         outcome: RegressionOutcome,
         triggered_by: str,
+        offending_commit_hash: str | None = None,
     ) -> RegressionRun:
         result = await session.execute(
             sa.text(
                 "INSERT INTO regression_runs"  # noqa: S608
                 " (vulnerability_id, target_version_id, replay_count,"
-                "  verdicts, outcome, triggered_by, completed_at)"
-                " VALUES (:vid, :tvid, :n, CAST(:v AS jsonb), :o, :tb, now())"
+                "  verdicts, outcome, triggered_by, completed_at,"
+                "  offending_commit_hash)"
+                " VALUES (:vid, :tvid, :n, CAST(:v AS jsonb), :o, :tb,"
+                "  now(), :och)"
                 f" RETURNING {_COLS}"
             ),
             {
@@ -66,6 +70,7 @@ class RegressionRunRepository:
                 "v": json.dumps(verdicts),
                 "o": outcome.value,
                 "tb": triggered_by,
+                "och": offending_commit_hash,
             },
         )
         row = result.mappings().first()

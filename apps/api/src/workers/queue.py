@@ -90,6 +90,7 @@ async def enqueue_harness_regression_sweep(
     target_version_hint: str,
     triggered_by: str,
     request_id: str,
+    commit_sha: str | None = None,
 ) -> None:
     """Push a harness.run_regression_sweep job onto the arq Redis queue.
 
@@ -105,6 +106,7 @@ async def enqueue_harness_regression_sweep(
             target_version_hint,
             triggered_by,
             request_id,
+            commit_sha,
             _job_id=f"harness:{target_version_hint}",
         )
     finally:

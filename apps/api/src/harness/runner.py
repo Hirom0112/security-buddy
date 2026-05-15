@@ -34,6 +34,7 @@ from src.domain.verdict import VerdictLabel  # noqa: TC001
 from src.harness.aggregate import aggregate_replays, next_vulnerability_status
 from src.observability.events import log_event
 from src.repositories.regression_runs import RegressionRunRepository
+from src.repositories.target_versions import TargetVersionRepository
 from src.repositories.vulnerabilities import VulnerabilityRepository
 
 if TYPE_CHECKING:
@@ -106,6 +107,12 @@ async def run_regressions(
     vuln_repo = VulnerabilityRepository()
     run_repo = RegressionRunRepository()
 
+    # Look up the commit_hash for the current target_version once. We
+    # only attach it to regression_runs rows whose outcome is REGRESSED
+    # — see DoD #3, Slice 6.
+    current_version = await TargetVersionRepository().get_by_id(session, target_version_id)
+    current_commit_hash = current_version.commit_hash if current_version is not None else None
+
     counts = {
         RegressionOutcome.FIX_VERIFIED: 0,
         RegressionOutcome.REGRESSED: 0,
@@ -161,6 +168,7 @@ async def run_regressions(
         outcome = aggregate_replays(verdicts)
         counts[outcome] += 1
 
+        offending = current_commit_hash if outcome is RegressionOutcome.REGRESSED else None
         await run_repo.create(
             session,
             vulnerability_id=vuln.id,
@@ -169,6 +177,7 @@ async def run_regressions(
             verdicts=verdict_rows,
             outcome=outcome,
             triggered_by=triggered_by,
+            offending_commit_hash=offending,
         )
 
         new_status = next_vulnerability_status(outcome=outcome, prior_status=vuln.status)

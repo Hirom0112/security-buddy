@@ -34,3 +34,4 @@ class RegressionRun(BaseModel):
     triggered_by: str
     started_at: datetime
     completed_at: datetime | None
+    offending_commit_hash: str | None = None

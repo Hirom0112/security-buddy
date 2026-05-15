@@ -32,6 +32,7 @@ async def run_regression_sweep(
     target_version_hint: str,
     triggered_by: str,
     request_id: str,
+    commit_sha: str | None = None,
 ) -> dict[str, Any]:
     """Arq job: replay all confirmed vulns against the latest target version.
 
@@ -73,6 +74,7 @@ async def run_regression_sweep(
                 target_id=manifest.target_id,
                 version=target_version_hint or "unknown",
                 triggered_by=triggered_by,
+                commit_hash=commit_sha,
             )
 
             target_client = TargetClient(settings, rate_limiter)

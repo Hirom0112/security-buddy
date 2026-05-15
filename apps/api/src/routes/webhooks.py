@@ -175,6 +175,7 @@ async def github_webhook(
         target_version_hint=version_hint,
         triggered_by="github_merge",
         request_id=request_id,
+        commit_sha=sha,
     )
 
     log_event(

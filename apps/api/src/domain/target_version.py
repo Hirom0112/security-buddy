@@ -18,5 +18,6 @@ class TargetVersion(BaseModel):
     target_manifest_id: UUID
     target_id: str
     version: str
+    commit_hash: str | None = None
     deployed_at: datetime
     triggered_by: str | None
