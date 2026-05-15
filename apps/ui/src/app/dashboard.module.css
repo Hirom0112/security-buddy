@@ -3,7 +3,9 @@
  * Cyber-noir theme matching the /login scene. Animations are pure CSS.
  * ------------------------------------------------------------------------- */
 
-.root {
+/* Hoisted to :global(:root) so portaled modals (createPortal target =
+ * document.body) and any DOM outside .root can resolve them. */
+:global(:root) {
   --sb-bg: #0a0a0f;
   --sb-surface: #0f0f18;
   --sb-card: #12121e;
@@ -20,7 +22,9 @@
   --sb-fg: #e2e8f0;
   --sb-muted: #8a93a4;
   --sb-muted2: #2d3748;
+}
 
+.root {
   background: var(--sb-bg);
   color: var(--sb-text);
   font-family: var(--font-mono, "DM Mono", ui-monospace, monospace);
