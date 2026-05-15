@@ -569,17 +569,12 @@ material ready.
      and HIPAA Security Rule** for the finding (this comes for free
      from Slice 4's mandatory framework-citation work; Slice 8 verifies
      it landed correctly in the exported docs)
-5. **Demo video script** at `docs/DEMO_SCRIPT.md`:
-   - 3–5 min walkthrough of the platform running end-to-end
-   - Hits: trigger campaign → live attacks → confirmed exploit → vuln
-     report → PR opened → operator review → merge → regression run →
-     before/after diff RESOLVED
-6. **README.md** final polish:
+5. **README.md** final polish:
    - Setup instructions
    - Deployed URLs (target + Security Buddy)
    - Architecture diagram (link to ARCHITECTURE.md)
    - Quick-start to reproduce the demo
-7. **Social post draft** for X/LinkedIn (final-only deliverable per the
+6. **Social post draft** for X/LinkedIn (final-only deliverable per the
    case study).
 
 ### Definition of Done
