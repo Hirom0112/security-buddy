@@ -25,11 +25,12 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID  # noqa: TC003
 
+import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession  # noqa: TC002
 
 from src.agents.orchestrator import budget_enforcer
 from src.agents.orchestrator.brief_generator import generate_brief
-from src.agents.orchestrator.priority import pick_top
+from src.agents.orchestrator.priority import pick_top, rank_subcategories
 from src.domain.campaign import CampaignStatus
 from src.domain.coverage import CoverageRow, PriorityScore  # noqa: TC001
 from src.domain.errors import NotFoundError
@@ -44,6 +45,32 @@ from src.repositories.target_manifests import TargetManifestRepository
 # the LLM may suggest values; the worker enforces them in code.
 _MAX_VARIANT_COUNT: int = 50
 _MAX_BUDGET_USD: Decimal = Decimal("10.00")
+
+
+async def _subcategory_in_taxonomy(session: AsyncSession, subcategory: str) -> bool:
+    """Return True if the subcategory exists in attack_taxonomy.
+
+    Mirrors `routes.campaigns._subcategory_exists` but kept local to the tick
+    module so the agents/orchestrator package does not import from routes/.
+    """
+    result = await session.execute(
+        sa.text("SELECT 1 FROM attack_taxonomy WHERE subcategory = :sub LIMIT 1"),
+        {"sub": subcategory},
+    )
+    return result.first() is not None
+
+
+def _priority_for_pin(subcategory: str, rows: list[CoverageRow]) -> PriorityScore | None:
+    """Return the PriorityScore the priority function would assign to `subcategory`.
+
+    Used when an operator pin bypasses pick_top(): we still want the same
+    breakdown attached to the TickOutcome and brief so the UI shows a real
+    score, just for a possibly-not-top row.
+    """
+    for score in rank_subcategories(rows):
+        if score.subcategory == subcategory:
+            return score
+    return None
 
 
 @dataclass(frozen=True)
@@ -123,11 +150,43 @@ async def run_tick(
 
     # ------------------------------------------------------------------
     # Layer A — deterministic priority math.
+    #
+    # If the operator pinned a `target_subcategory` on the campaign
+    # (POST /api/v1/campaigns/start with the optional override), that
+    # pin is authoritative: we skip pick_top() entirely after validating
+    # the pin against attack_taxonomy. An invalid pin falls back to the
+    # priority pick so the loop keeps moving rather than dead-ending on
+    # operator error. Both branches emit a structured log line so the
+    # decision is auditable.
     # ------------------------------------------------------------------
     rows: list[CoverageRow] = await coverage_repo.snapshot(
         session, target_version_id=campaign.target_version_id
     )
-    top: PriorityScore | None = pick_top(rows)
+
+    top: PriorityScore | None = None
+    pin = campaign.target_subcategory
+    if pin is not None:
+        pin_known = await _subcategory_in_taxonomy(session, pin)
+        if pin_known:
+            top = _priority_for_pin(pin, rows)
+            log_event(
+                "orchestrator_pin_override",
+                campaign_id=str(campaign_id),
+                subcategory=pin,
+                priority_score=round(top.score, 4) if top is not None else None,
+                outcome="pin_honoured",
+            )
+        else:
+            log_event(
+                "orchestrator_pin_invalid",
+                campaign_id=str(campaign_id),
+                subcategory=pin,
+                outcome="pin_rejected_fallback_to_priority",
+            )
+
+    if top is None:
+        top = pick_top(rows)
+
     if top is None:
         await campaign_repo.update_status(
             session,
