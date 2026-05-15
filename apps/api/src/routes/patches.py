@@ -12,17 +12,23 @@ ci_failed when CI flips red, etc.).
 
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator
+# NOTE: Pydantic 2.13 forward-ref resolution requires UUID, AsyncSession,
+# AsyncGenerator, and async_sessionmaker at runtime in this module — they
+# back FastAPI path params / DI dependencies. Do not move them into a
+# TYPE_CHECKING block (see commit db36f84).
+from collections.abc import AsyncGenerator  # noqa: TC003
 from typing import Annotated, Literal
-from uuid import UUID
+from uuid import UUID  # noqa: TC003
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker  # noqa: TC002
 
 from src.domain.patch import Patch, PatchStatus
+from src.observability.context import get_request_id
 from src.observability.events import log_event
 from src.repositories.patches import PatchRepository
+from src.workers.queue import enqueue_harness_regression_sweep
 
 router = APIRouter(prefix="/api/v1/patches", tags=["patches"])
 
@@ -104,4 +110,21 @@ async def review_patch(
         new_status=new_status.value,
         outcome="success",
     )
+
+    if new_status is PatchStatus.MERGED:
+        # Mirror the GitHub webhook path: a merged patch must trigger a
+        # regression sweep so the loop closes when the operator marks
+        # merged from the UI without a live webhook delivery.
+        request_id = get_request_id() or f"patch-review:{patch_id}"
+        await enqueue_harness_regression_sweep(
+            target_version_hint=f"patch:{patch_id}",
+            triggered_by=f"operator_review:{patch_id}",
+            request_id=request_id,
+        )
+        log_event(
+            "regression_sweep_enqueued_from_patch_review",
+            patch_id=str(patch_id),
+            outcome="success",
+        )
+
     return updated
