@@ -87,7 +87,8 @@ export type VulnerabilityStatus =
   | "proposed_fix"
   | "patched"
   | "regressed"
-  | "unstable";
+  | "unstable"
+  | "over_fit";
 
 export type VulnerabilitySeverity = "critical" | "high" | "medium" | "low";
 
@@ -124,6 +125,33 @@ export interface VulnerabilityDetail extends VulnerabilityRow {
 }
 
 // ---------------------------------------------------------------------------
+// Attack taxonomy (Start Campaign modal dropdowns)
+// ---------------------------------------------------------------------------
+
+export interface TaxonomyCategory {
+  category: string;
+  subcategories: string[];
+}
+
+export interface AttackTaxonomy {
+  categories: TaxonomyCategory[];
+}
+
+export interface VulnerabilitySummary {
+  id: string;
+  vuln_id: string;
+  title: string;
+  status: VulnerabilityStatus;
+  severity: VulnerabilitySeverity;
+  subcategory: string;
+}
+
+export interface VulnerabilityListResponse {
+  items: VulnerabilitySummary[];
+  total: number;
+}
+
+// ---------------------------------------------------------------------------
 // Regression runs
 // ---------------------------------------------------------------------------
 
@@ -149,6 +177,18 @@ export interface RegressionRun {
   triggered_by: string;
   started_at: string;
   completed_at: string | null;
+  kind?: "exploit_replay" | "happy_path";
+}
+
+// One per-fixture entry inside the verdicts JSONB column for a
+// regression_runs row where kind='happy_path' — written by
+// _flip_over_fit in src/harness/runner.py.
+export interface HappyPathReplay {
+  verdict: "happy_path_pass" | "happy_path_fail";
+  evidence: string;
+  target_status_code: number | null;
+  capability_name: string;
+  fixture_id: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -159,7 +199,8 @@ export type PatchStatus =
   | "awaiting_human_review"
   | "merged"
   | "rejected"
-  | "ci_failed";
+  | "ci_failed"
+  | "blocks_legit_features";
 
 export interface Patch {
   id: string;

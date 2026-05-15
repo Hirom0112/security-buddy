@@ -33,6 +33,7 @@ from src.observability.middleware import RequestIdMiddleware
 from src.routes.campaigns import router as campaigns_router
 from src.routes.health import router as health_router
 from src.routes.patches import router as patches_router
+from src.routes.taxonomy import router as taxonomy_router
 from src.routes.vulnerabilities import router as vulnerabilities_router
 from src.routes.webhooks import router as webhooks_router
 from src.settings import Settings, get_settings
@@ -231,6 +232,7 @@ app.include_router(health_router)
 app.include_router(campaigns_router)
 app.include_router(patches_router)
 app.include_router(vulnerabilities_router)
+app.include_router(taxonomy_router)
 app.include_router(webhooks_router)
 
 # Prometheus metrics endpoint (no auth — monitoring infrastructure needs it)

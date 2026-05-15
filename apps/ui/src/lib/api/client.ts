@@ -6,6 +6,7 @@
 // browser) — we pass the operator session cookie forward when present.
 
 import { env } from "@/lib/env";
+import type { AttackTaxonomy, VulnerabilityListResponse } from "@/types";
 
 export class ApiError extends Error {
   constructor(
@@ -69,7 +70,10 @@ export type CampaignStartMode = "live" | "smoke";
 export interface StartCampaignInput {
   budget_usd: number;
   mode: CampaignStartMode;
+  target_category?: string | undefined;
   target_subcategory?: string | undefined;
+  rerun_vulnerability_id?: string | undefined;
+  variant_count?: number | undefined;
 }
 
 export interface StartCampaignResult {
@@ -98,8 +102,17 @@ export async function startCampaign(
     budget_usd: input.budget_usd.toFixed(2),
     mode: input.mode,
   };
+  if (input.target_category && input.target_category.trim() !== "") {
+    body["target_category"] = input.target_category.trim();
+  }
   if (input.target_subcategory && input.target_subcategory.trim() !== "") {
     body["target_subcategory"] = input.target_subcategory.trim();
+  }
+  if (input.rerun_vulnerability_id !== undefined) {
+    body["rerun_vulnerability_id"] = input.rerun_vulnerability_id;
+  }
+  if (input.variant_count !== undefined) {
+    body["variant_count"] = input.variant_count;
   }
   const resp = await apiFetch("/api/v1/campaigns/start", {
     method: "POST",
@@ -168,4 +181,84 @@ export async function decideVulnerability(
     method: "POST",
     jsonBody: payload,
   });
+}
+
+// ---------------------------------------------------------------------------
+// Re-run the original attack for a vulnerability. Returns the enqueued
+// arq job_id so the UI can correlate poll results if needed.
+// ---------------------------------------------------------------------------
+
+export interface RerunVulnerabilityResult {
+  vulnerability_id: string;
+  job_id: string;
+  enqueued_at: string;
+}
+
+function isRerunResult(v: unknown): v is RerunVulnerabilityResult {
+  return (
+    v !== null &&
+    typeof v === "object" &&
+    "vulnerability_id" in v &&
+    typeof (v as { vulnerability_id: unknown }).vulnerability_id === "string" &&
+    "job_id" in v &&
+    typeof (v as { job_id: unknown }).job_id === "string" &&
+    "enqueued_at" in v &&
+    typeof (v as { enqueued_at: unknown }).enqueued_at === "string"
+  );
+}
+
+export async function rerunVulnerability(
+  vulnerabilityId: string,
+  replays = 1
+): Promise<RerunVulnerabilityResult> {
+  const resp = await apiFetch(
+    `/api/v1/vulnerabilities/${vulnerabilityId}/rerun?replays=${replays}`,
+    { method: "POST" }
+  );
+  const data: unknown = await resp.json();
+  if (!isRerunResult(data)) {
+    throw new ApiError("Unexpected response from /vulnerabilities/rerun", 500);
+  }
+  return data;
+}
+
+// ---------------------------------------------------------------------------
+// Start Campaign modal data: attack taxonomy + rerun-candidate vulns.
+// Both are server-action callers (Next.js cookie session forwarded).
+// ---------------------------------------------------------------------------
+
+function isAttackTaxonomy(v: unknown): v is AttackTaxonomy {
+  if (v === null || typeof v !== "object") return false;
+  const cats = (v as { categories: unknown }).categories;
+  return Array.isArray(cats);
+}
+
+export async function fetchAttackTaxonomy(): Promise<AttackTaxonomy> {
+  const resp = await apiFetch("/api/v1/attack_taxonomy", { method: "GET" });
+  const data: unknown = await resp.json();
+  if (!isAttackTaxonomy(data)) {
+    throw new ApiError("Unexpected response from /api/v1/attack_taxonomy", 500);
+  }
+  return data;
+}
+
+function isVulnerabilityList(v: unknown): v is VulnerabilityListResponse {
+  if (v === null || typeof v !== "object") return false;
+  const items = (v as { items: unknown }).items;
+  return Array.isArray(items);
+}
+
+export async function fetchRerunCandidates(
+  statuses = "regressed,unstable",
+  limit = 100
+): Promise<VulnerabilityListResponse> {
+  const url = `/api/v1/vulnerabilities?status=${encodeURIComponent(
+    statuses
+  )}&limit=${limit}`;
+  const resp = await apiFetch(url, { method: "GET" });
+  const data: unknown = await resp.json();
+  if (!isVulnerabilityList(data)) {
+    throw new ApiError("Unexpected response from /api/v1/vulnerabilities", 500);
+  }
+  return data;
 }

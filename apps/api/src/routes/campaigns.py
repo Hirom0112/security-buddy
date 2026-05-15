@@ -240,9 +240,20 @@ async def create_campaign(
 class StartCampaignRequest(BaseModel):
     """Validated body for POST /api/v1/campaigns/start.
 
-    No target_subcategory: the Orchestrator's priority function picks one.
-    The operator only controls the budget envelope; everything else is
-    coverage-driven.
+    Three mutually-exclusive targeting modes:
+
+      1. Default — no targeting fields. The Orchestrator's priority
+         function picks the subcategory.
+      2. Subcategory pin — target_category and/or target_subcategory.
+         Validated against attack_taxonomy; the Orchestrator honours
+         the pin instead of running its priority function.
+      3. Rerun-vuln — rerun_vulnerability_id. The route builds a
+         deterministic brief seeded with the vuln's exact attack input
+         and skips the Orchestrator entirely. Mutually exclusive with
+         target_category / target_subcategory; mixing returns 422.
+
+    The operator controls the budget envelope; the worker still clamps
+    against its own hard caps regardless.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -255,14 +266,42 @@ class StartCampaignRequest(BaseModel):
             " 'smoke' — plumbing/CI run, excluded from dashboard stats."
         ),
     )
+    target_category: str | None = Field(
+        default=None,
+        min_length=3,
+        max_length=100,
+        description=(
+            "Optional category-level pin. Used by the UI when the operator "
+            "picks a category but no specific subcategory. Validated against "
+            "attack_taxonomy.category. Ignored when target_subcategory or "
+            "rerun_vulnerability_id is set."
+        ),
+    )
     target_subcategory: str | None = Field(
         default=None,
         min_length=3,
         max_length=100,
         description=(
-            "Optional override. If provided, must exist in attack_taxonomy "
-            "and the campaign is created already pinned to that subcategory. "
-            "If omitted (default), the Orchestrator's priority function picks."
+            "Optional subcategory pin. If provided, must exist in "
+            "attack_taxonomy. Mutually exclusive with rerun_vulnerability_id."
+        ),
+    )
+    rerun_vulnerability_id: UUID | None = Field(
+        default=None,
+        description=(
+            "When set, build a rerun-vuln brief seeded with the vuln's "
+            "exact attack input and pin the campaign to that vuln's "
+            "subcategory. Mutually exclusive with target_category / "
+            "target_subcategory."
+        ),
+    )
+    variant_count: int | None = Field(
+        default=None,
+        ge=1,
+        le=200,
+        description=(
+            "Optional override for the rerun-vuln brief's variant count. "
+            "Ignored for non-rerun campaigns (the Orchestrator picks)."
         ),
     )
 
@@ -294,6 +333,41 @@ async def start_campaign(
     _operator: Annotated[_OperatorIdentity, Depends(require_session)],
     db: Annotated[AsyncSession, Depends(_get_db_session)],
 ) -> Any:
+    # ------------------------------------------------------------------
+    # Mutual-exclusivity: rerun_vulnerability_id cannot coexist with
+    # target_category / target_subcategory. One targeting mode per call.
+    # ------------------------------------------------------------------
+    if body.rerun_vulnerability_id is not None and (
+        body.target_category is not None or body.target_subcategory is not None
+    ):
+        log_event(
+            "campaign_start_targeting_conflict",
+            rerun_vulnerability_id=str(body.rerun_vulnerability_id),
+            target_category=body.target_category or "",
+            target_subcategory=body.target_subcategory or "",
+            outcome="rejected",
+        )
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            content={
+                "type": "https://security-buddy.internal/errors/targeting-conflict",
+                "title": "Conflicting Targeting Fields",
+                "status": 422,
+                "detail": (
+                    "rerun_vulnerability_id is mutually exclusive with "
+                    "target_category and target_subcategory."
+                ),
+                "instance": str(request.url),
+            },
+            media_type="application/problem+json",
+        )
+
+    # ------------------------------------------------------------------
+    # Branch A: Rerun-vuln campaign — deterministic brief, no Orchestrator.
+    # ------------------------------------------------------------------
+    if body.rerun_vulnerability_id is not None:
+        return await _start_rerun_vuln_campaign(body, request, db)
+
     # ------------------------------------------------------------------
     # Server-side double-submit guard.
     #
@@ -330,7 +404,34 @@ async def start_campaign(
             enqueued_at=dup_row["created_at"],
         )
 
-    # Validate optional override against attack_taxonomy.
+    # Validate optional category override against attack_taxonomy.
+    if body.target_category is not None:
+        cat_check = await db.execute(
+            sa.text("SELECT 1 FROM attack_taxonomy WHERE category = :cat LIMIT 1"),
+            {"cat": body.target_category},
+        )
+        if cat_check.first() is None:
+            log_event(
+                "campaign_start_invalid_category",
+                category=body.target_category,
+                outcome="rejected",
+            )
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={
+                    "type": "https://security-buddy.internal/errors/invalid-category",
+                    "title": "Invalid Category",
+                    "status": 400,
+                    "detail": (
+                        f"target_category '{body.target_category}' "
+                        "is not present in attack_taxonomy."
+                    ),
+                    "instance": str(request.url),
+                },
+                media_type="application/problem+json",
+            )
+
+    # Validate optional subcategory override against attack_taxonomy.
     if body.target_subcategory is not None and not await _subcategory_exists(
         db, body.target_subcategory
     ):
@@ -374,6 +475,85 @@ async def start_campaign(
         budget_usd=float(body.budget_usd),
         mode=body.mode.value,
         subcategory=body.target_subcategory or "",
+        outcome="enqueued",
+    )
+
+    return StartCampaignResponse(
+        campaign_id=campaign.id,
+        status="pending",
+        enqueued_at=enqueued_at,
+    )
+
+
+async def _start_rerun_vuln_campaign(
+    body: StartCampaignRequest,
+    request: Request,
+    db: AsyncSession,
+) -> Any:
+    """Build the deterministic rerun-vuln brief and enqueue Red Team directly.
+
+    Orchestrator is skipped because the seed (vuln.exact_attack_input) is
+    already concrete. The brief carries the synthetic seed in
+    success_criteria['__rerun_seed__'] for the executor to pick up.
+    """
+    from src.agents.orchestrator.rerun_vuln_brief import (
+        DEFAULT_RERUN_VARIANT_COUNT,
+        build_rerun_brief,
+    )
+
+    assert body.rerun_vulnerability_id is not None  # narrowed by caller
+
+    draft = await build_rerun_brief(
+        session=db,
+        vulnerability_id=body.rerun_vulnerability_id,
+        budget_usd=body.budget_usd,
+        variant_count=body.variant_count or DEFAULT_RERUN_VARIANT_COUNT,
+    )
+    if draft is None:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content={
+                "type": "https://security-buddy.internal/errors/vulnerability-not-found",
+                "title": "Vulnerability Not Found",
+                "status": 404,
+                "detail": (
+                    f"Vulnerability {body.rerun_vulnerability_id} not found; "
+                    "cannot build rerun campaign."
+                ),
+                "instance": str(request.url),
+            },
+            media_type="application/problem+json",
+        )
+
+    repo = CampaignRepository()
+    campaign = await repo.create(
+        db,
+        target_subcategory=draft.target_subcategory,
+        budget_usd=body.budget_usd,
+        mode=body.mode,
+    )
+    brief = await repo.add_brief(
+        db,
+        campaign_id=campaign.id,
+        description=draft.description,
+        variant_count=draft.variant_count,
+        target_subcategory=draft.target_subcategory,
+        success_criteria=dict(draft.success_criteria),
+        budget_usd=draft.budget_usd,
+    )
+
+    request_id = get_request_id() or ""
+    await enqueue_red_team_execute(brief.id, request_id)
+    enqueued_at = datetime.now(UTC)
+
+    log_event(
+        "campaign_start_rerun_enqueued",
+        campaign_id=str(campaign.id),
+        brief_id=str(brief.id),
+        vulnerability_id=str(body.rerun_vulnerability_id),
+        vuln_label=draft.seed.vuln_label,
+        subcategory=draft.target_subcategory,
+        variant_count=draft.variant_count,
         outcome="enqueued",
     )
 
