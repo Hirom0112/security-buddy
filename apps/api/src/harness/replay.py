@@ -18,6 +18,7 @@ from src.agents.judge.model import JUDGE_AGENT_TAG, JUDGE_MODEL
 from src.agents.judge.parse import parse_judgment
 from src.agents.judge.prompt import build_judge_messages
 from src.agents.judge.rubric import resolve_rubric
+from src.agents.judge.schema import Rubric, TrustBoundary
 from src.agents.red_team.target_client import (
     TargetClient,
     TargetRateLimitedError,
@@ -96,20 +97,23 @@ def make_live_replay(
             )
 
         # ----------------------------------------------------------
-        # 3. Judge the response with the current rubric.
-        #    NOTE: the Slice-6 plan calls for using the frozen rubric
-        #    from inp.rubric_snapshot. The current rubric_snapshot
-        #    column only carries rubric_version + violated_boundary_ids;
-        #    a full frozen-rubric snapshot is tracked as a follow-up in
-        #    TODO.md ("Watch items: Slice 6 frozen rubric"). For now we
-        #    resolve against the live manifest so the harness has *some*
-        #    rubric to use.
+        # 3. Judge the response.
+        #    Slice 6 §1 / CLAUDE.md §6a: prefer the FROZEN rubric snapshot
+        #    written by the documentation agent at confirmation time. This
+        #    prevents a mid-incident manifest change from silently re-grading
+        #    an old finding. Legacy rows without rubric_snapshot["full"] fall
+        #    back to live resolution.
         # ----------------------------------------------------------
-        rubric = resolve_rubric(
-            manifest_json=manifest.manifest_json,
+        rubric = _rubric_from_snapshot(
+            snapshot=inp.rubric_snapshot,
             subcategory=attack.subcategory,
-            success_criteria={},
         )
+        if rubric is None:
+            rubric = resolve_rubric(
+                manifest_json=manifest.manifest_json,
+                subcategory=attack.subcategory,
+                success_criteria={},
+            )
         messages = build_judge_messages(
             rubric=rubric,
             attack_input=inp.attack_input,
@@ -133,3 +137,63 @@ def make_live_replay(
         )
 
     return _replay
+
+
+def _rubric_from_snapshot(
+    *,
+    snapshot: dict[str, object] | None,
+    subcategory: str,
+) -> Rubric | None:
+    """Reconstruct a Rubric from vulnerabilities.rubric_snapshot["full"].
+
+    Returns None for legacy snapshots that predate the frozen-rubric work
+    (no "full" key), so the caller can fall back to live resolution. We
+    return None — not raise — because a missing snapshot is a known
+    backward-compat path, not a bug.
+    """
+    if not isinstance(snapshot, dict):
+        return None
+    full = snapshot.get("full")
+    if not isinstance(full, dict):
+        return None
+
+    raw_boundaries = full.get("trust_boundaries", [])
+    if not isinstance(raw_boundaries, list) or not raw_boundaries:
+        return None
+    try:
+        boundaries = [TrustBoundary.model_validate(b) for b in raw_boundaries]
+    except Exception:
+        return None
+
+    expected_safe: str | None = None
+    raw_expected = full.get("expected_safe_behaviors", [])
+    if isinstance(raw_expected, list):
+        for entry in raw_expected:
+            if not isinstance(entry, dict):
+                continue
+            if entry.get("subcategory") == subcategory:
+                behavior = entry.get("expected_safe_behavior")
+                if isinstance(behavior, str) and behavior.strip():
+                    expected_safe = behavior
+                    break
+    if expected_safe is None:
+        return None
+
+    raw_criteria = full.get("success_criteria", [])
+    # success_criteria in the snapshot is a list (one element per brief).
+    # The judge schema expects a dict; collapse to the first entry, or {}.
+    success_criteria: dict[str, object] = {}
+    if isinstance(raw_criteria, list) and raw_criteria:
+        first = raw_criteria[0]
+        if isinstance(first, dict):
+            success_criteria = first
+
+    try:
+        return Rubric(
+            subcategory=subcategory,
+            trust_boundaries=boundaries,
+            expected_safe_behavior=expected_safe,
+            success_criteria=success_criteria,
+        )
+    except Exception:
+        return None

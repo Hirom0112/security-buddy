@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+from typing import Any
 from uuid import UUID  # noqa: TC003
 
 from sqlalchemy.ext.asyncio import AsyncSession  # noqa: TC002
@@ -37,6 +38,7 @@ from src.agents.documentation.parse import (
     parse_draft,
 )
 from src.agents.documentation.prompt import build_documentation_messages
+from src.agents.documentation.rubric_snapshot import build_full_rubric_snapshot
 from src.agents.documentation.schema import (
     FrameworkCitation,
     Severity,
@@ -53,6 +55,7 @@ from src.llm_client.client import LLMClient  # noqa: TC001
 from src.observability.events import log_event
 from src.repositories.attack_taxonomy import AttackTaxonomyRepository
 from src.repositories.attacks import AttackRepository
+from src.repositories.campaigns import CampaignRepository
 from src.repositories.target_manifests import TargetManifestRepository
 from src.repositories.verdicts import VerdictRepository
 from src.repositories.vulnerabilities import VulnerabilityRepository
@@ -244,11 +247,32 @@ async def run_document(
     # ------------------------------------------------------------------
     # 7. Persist the vulnerabilities row.
     # ------------------------------------------------------------------
-    rubric_snapshot = {
+    rubric_snapshot: dict[str, Any] = {
         "rubric_version": verdict.rubric_version,
         "model_version": verdict.model_version,
         "violated_boundary_ids": violated_ids,
     }
+
+    # CLAUDE.md §6a / Slice 6 §1: freeze the FULL rubric at write time so the
+    # regression harness re-grades against the rubric in force at confirmation,
+    # not against a live manifest that may have drifted mid-incident. We snap
+    # only when we have a manifest in hand — legacy rows without `full` fall
+    # back to live resolution in harness.replay.
+    if manifest is not None:
+        brief_criteria: list[Any] | dict[str, Any] | None = None
+        try:
+            brief = await CampaignRepository().get_brief(session, attack.brief_id)
+            if brief is not None:
+                brief_criteria = brief.success_criteria
+        except Exception:
+            brief_criteria = None
+        rubric_snapshot["full"] = build_full_rubric_snapshot(
+            manifest_id=manifest.id,
+            manifest_version=manifest.version,
+            manifest_json=manifest.manifest_json,
+            subcategory=attack.subcategory,
+            success_criteria=brief_criteria,
+        )
 
     row = await vuln_repo.create(
         session,
