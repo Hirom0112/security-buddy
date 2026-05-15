@@ -12,13 +12,17 @@ The soft-gate workflow (CLAUDE.md §"Critical-severity soft gate"):
 
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator
+# NOTE: Pydantic 2.13 forward-ref resolution requires UUID, AsyncSession,
+# AsyncGenerator, and async_sessionmaker at runtime in this module — they
+# back FastAPI path params / DI dependencies. Do not move them into a
+# TYPE_CHECKING block (see commit db36f84).
+from collections.abc import AsyncGenerator  # noqa: TC003
 from typing import Annotated, Literal
-from uuid import UUID
+from uuid import UUID  # noqa: TC003
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker  # noqa: TC002
 
 from src.domain.vulnerability import Vulnerability, VulnerabilityStatus
 from src.observability.events import log_event
