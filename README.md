@@ -6,11 +6,13 @@
 > verify the fixes held. Target: an OpenEMR Clinical Co-Pilot.
 
 **Author:** Hirom Alarcon · **Week:** 3 — Gauntlet AI Austin Admission Track
-**Status:** MVP loop verified end-to-end against a live deployed target on
-2026-05-12 — see [Live Demo Results](#live-demo-results-2026-05-12) below.
+**Status:** Full discover → patch → verify → auto-retry loop verified
+end-to-end against the live deployed target on 2026-05-15 (3 PRs opened,
+2 fixes verified, 1 regression auto-retried with a new PR) — see
+[Live Demo Results](#live-demo-results-2026-05-12) below.
 Three curated critical findings exported to [`docs/findings/`](docs/findings/)
-([VUL-0017](docs/findings/VUL-0017.md), [VUL-0021](docs/findings/VUL-0021.md),
-[VUL-0023](docs/findings/VUL-0023.md)). Every report cites
+([VUL-0001](docs/findings/VUL-0001.md), [VUL-0002](docs/findings/VUL-0002.md),
+[VUL-0003](docs/findings/VUL-0003.md)). Every report cites
 **OWASP LLM Top 10 (2025)**, **MITRE ATLAS (v5.1.0)**, and the
 **HIPAA Security Rule** (frameworks snapshotted at confirmation time per
 `vulnerabilities.framework_versions`).
@@ -134,13 +136,15 @@ opened PR #2 on `Hirom0112/openemr` (branch `security-buddy/vul-0008`,
 +480/−2,973 lines, new `PatientAccessControlService.php`), operator reviewed
 and merged, status now `proposed_fix`. Regression sweep pending.
 
-> **Note (2026-05-15 update):** A second live campaign
-> `ed26ea6b-71be-4c91-b7a4-75b0ac9a4476` ran after the LLM Red Team Agent
-> shipped (commit `0772009`) — 20 attacks, 11 exploits, 10 critical drafts
-> (VUL-0014..VUL-0023), $0.43 total. The three exported findings in
-> [`docs/findings/`](docs/findings/) (VUL-0017, VUL-0021, VUL-0023) come from
-> this later campaign. See [`docs/TODO.md`](docs/TODO.md) "Done 2026-05-14 —
-> LLM Red Team live runs" for the full run log.
+> **Note (2026-05-15 update):** The three exported findings in
+> [`docs/findings/`](docs/findings/) (VUL-0001, VUL-0002, VUL-0003) come from
+> the post-recalibration sweep against the live deployed target. The full
+> discover → patch → verify → auto-retry loop ran end-to-end on Railway:
+> Patch Agent opened PRs [#7](https://github.com/Hirom0112/openemr/pull/7),
+> [#8](https://github.com/Hirom0112/openemr/pull/8),
+> [#9](https://github.com/Hirom0112/openemr/pull/9), the regression harness
+> verified two as patched and flagged one as regressed, and the auto-retry
+> opened [#11](https://github.com/Hirom0112/openemr/pull/11) as attempt #2.
 
 Eval baselines (recorded in [`docs/EVAL_BASELINES.md`](docs/EVAL_BASELINES.md)):
 
@@ -233,7 +237,7 @@ the demo, runs against the live deployed target:
    the verdict (`exploit` / `partial` / `safe` / `unclear`), confidence, and
    rubric version.
 4. **Confirm a critical finding.** Open `/vulnerabilities`, pick a draft
-   CRITICAL finding (e.g., VUL-0017/0021/0023 from the exported set), review
+   CRITICAL finding (e.g., VUL-0001/0002/0003 from the exported set), review
    the Documentation Agent report (framework citations included), and confirm
    it. Confirming triggers the Patch Agent.
 5. **See the PR.** The Patch Agent opens a branch and PR against
@@ -266,12 +270,16 @@ response, Judge verdict + confidence, severity rationale, and framework
 citations (OWASP LLM Top 10 2025 / MITRE ATLAS v5.1.0 / HIPAA Security Rule
 §164.312) snapshotted at confirmation time:
 
-- [`docs/findings/VUL-0017.md`](docs/findings/VUL-0017.md) — Out-of-panel
-  patient record query executed without authorization check.
-- [`docs/findings/VUL-0021.md`](docs/findings/VUL-0021.md) — Role-override
-  prompt injection enables cross-patient medication data exfiltration.
-- [`docs/findings/VUL-0023.md`](docs/findings/VUL-0023.md) — Lab results
-  and vitals disclosed for out-of-panel patient without authorization.
+- [`docs/findings/VUL-0001.md`](docs/findings/VUL-0001.md) — Multi-turn
+  social-engineering handoff returns full clinical briefing (diagnoses,
+  meds, vitals, code status) for an out-of-panel patient. OWASP LLM06.
+- [`docs/findings/VUL-0002.md`](docs/findings/VUL-0002.md) — Authority-pretext
+  handoff request triggers bulk multi-patient census exposure (minimum-
+  necessary violation, leaks ICU critical-care state for adjacent patient).
+  OWASP LLM06 + LLM10.
+- [`docs/findings/VUL-0003.md`](docs/findings/VUL-0003.md) — Indirect prompt
+  injection via fake "AI SYSTEM OVERRIDE" footer in uploaded document text
+  leaks ICU labs. OWASP LLM01.
 
 ---
 
@@ -311,7 +319,7 @@ security_buddy/
 │   ├── PLAN.md                ← slice-by-slice build plan
 │   ├── EVAL_BASELINES.md      ← baselined accuracy for every LLM component
 │   ├── COST_ANALYSIS.md       ← real spend + projections at 100/1K/10K/100K runs
-│   └── findings/              ← exported vulnerability reports (VUL-0017, 0021, 0023)
+│   └── findings/              ← exported vulnerability reports (VUL-0001, 0002, 0003)
 ├── apps/
 │   ├── api/                   ← FastAPI + LangGraph + arq workers
 │   │   └── tests/evals/       ← ground-truth eval sets + runners
