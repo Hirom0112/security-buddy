@@ -11,14 +11,30 @@ import { getSql } from "./index";
 import type {
   Attack,
   Campaign,
+  CostPerAgentRow,
+  CostPerCampaignRow,
+  CostTotals,
   CoverageRow,
   DashboardSummary,
   Patch,
+  RegressionRun,
   Verdict,
   VulnerabilityDetail,
   VulnerabilityRow,
   VulnerabilitySeverity,
 } from "@/types";
+
+// The closed set of agent identities recognised by agent_traces.
+// Mirrors the CHECK constraint in apps/api/alembic/versions/0002_core_schema.py
+// (ck_agent_traces_agent). Kept alphabetical so the cost dashboard renders a
+// stable row order even when zero-call agents are filled in client-side.
+const AGENTS = [
+  "documentation",
+  "judge",
+  "orchestrator",
+  "patch",
+  "red_team",
+] as const;
 
 // ---------------------------------------------------------------------------
 // Campaigns
@@ -222,6 +238,129 @@ export async function getVulnerability(
 }
 
 // ---------------------------------------------------------------------------
+// Regression runs
+// ---------------------------------------------------------------------------
+
+/**
+ * Most recent regression_runs row for the given vulnerability, or null if no
+ * regression sweep has run yet. The `verdicts` column is JSONB — postgres.js
+ * returns it pre-parsed.
+ */
+export async function getLatestRegressionRun(
+  vulnerabilityId: string
+): Promise<RegressionRun | null> {
+  const sql = getSql();
+  const rows = await sql<RegressionRun[]>`
+    SELECT
+      id::text,
+      vulnerability_id::text,
+      target_version_id::text,
+      replay_count,
+      verdicts,
+      outcome,
+      triggered_by,
+      started_at,
+      completed_at
+    FROM regression_runs
+    WHERE vulnerability_id = ${vulnerabilityId}::uuid
+    ORDER BY started_at DESC
+    LIMIT 1
+  `;
+  return rows[0] ?? null;
+}
+
+/**
+ * The original attack + verdict tied to the vulnerability (via the
+ * vulnerabilities.attack_id and vulnerabilities.verdict_id pointers). Returns
+ * null if the vuln or its referenced rows are missing.
+ */
+export async function getOriginalAttackForVulnerability(
+  vulnerabilityId: string
+): Promise<{ attack: Attack; verdict: Verdict } | null> {
+  const sql = getSql();
+  const rows = await sql<
+    (Attack & {
+      v_id: string;
+      v_attack_id: string;
+      v_verdict: Verdict["verdict"];
+      v_confidence: string;
+      v_evidence: string;
+      v_rubric_version: string;
+      v_model_version: string;
+      v_created_at: string;
+    })[]
+  >`
+    SELECT
+      a.id::text          AS id,
+      a.campaign_id::text AS campaign_id,
+      a.category,
+      a.subcategory,
+      a.mutation_strategy,
+      a.attack_input,
+      a.target_response,
+      a.target_response_status,
+      a.status,
+      a.created_at,
+      a.executed_at,
+      vd.id::text         AS v_id,
+      vd.attack_id::text  AS v_attack_id,
+      vd.verdict          AS v_verdict,
+      vd.confidence::text AS v_confidence,
+      vd.evidence         AS v_evidence,
+      vd.rubric_version   AS v_rubric_version,
+      vd.model_version    AS v_model_version,
+      vd.created_at       AS v_created_at
+    FROM vulnerabilities vuln
+    JOIN attacks  a  ON a.id  = vuln.attack_id
+    JOIN verdicts vd ON vd.id = vuln.verdict_id
+    WHERE vuln.id = ${vulnerabilityId}::uuid
+    LIMIT 1
+  `;
+  const row = rows[0];
+  if (!row) return null;
+  const attack: Attack = {
+    id: row.id,
+    campaign_id: row.campaign_id,
+    category: row.category,
+    subcategory: row.subcategory,
+    mutation_strategy: row.mutation_strategy,
+    attack_input: row.attack_input,
+    target_response: row.target_response,
+    target_response_status: row.target_response_status,
+    status: row.status,
+    created_at: row.created_at,
+    executed_at: row.executed_at,
+  };
+  const verdict: Verdict = {
+    id: row.v_id,
+    attack_id: row.v_attack_id,
+    verdict: row.v_verdict,
+    confidence: row.v_confidence,
+    evidence: row.v_evidence,
+    rubric_version: row.v_rubric_version,
+    model_version: row.v_model_version,
+    created_at: row.v_created_at,
+  };
+  return { attack, verdict };
+}
+
+/**
+ * Count of regression_runs rows for a vulnerability. Used by the detail page
+ * to decide whether to show the "View diff" link.
+ */
+export async function countRegressionRunsForVulnerability(
+  vulnerabilityId: string
+): Promise<number> {
+  const sql = getSql();
+  const [row] = await sql<{ n: number }[]>`
+    SELECT COUNT(*)::int AS n
+    FROM regression_runs
+    WHERE vulnerability_id = ${vulnerabilityId}::uuid
+  `;
+  return row?.n ?? 0;
+}
+
+// ---------------------------------------------------------------------------
 // Patches
 // ---------------------------------------------------------------------------
 
@@ -361,4 +500,127 @@ export async function dashboardSummary(): Promise<DashboardSummary> {
     total_cost_usd: cost?.total ?? "0",
     last_24h_cost_usd: cost?.last_24h ?? "0",
   };
+}
+
+// ---------------------------------------------------------------------------
+// Cost dashboard
+// ---------------------------------------------------------------------------
+
+/**
+ * Top-line spend metrics: all-time spend, last-24h spend, last-24h call count,
+ * and last-24h avg cost per call. All money/decimal columns are returned as
+ * text to preserve precision (the project convention).
+ */
+export async function costTotals(): Promise<CostTotals> {
+  const sql = getSql();
+  const [row] = await sql<
+    {
+      total_usd: string;
+      spent_24h_usd: string;
+      calls_24h: number;
+      avg_cost_24h_usd: string;
+    }[]
+  >`
+    SELECT
+      COALESCE(SUM(cost_usd), 0)::text AS total_usd,
+      COALESCE(
+        SUM(cost_usd) FILTER (WHERE started_at > now() - INTERVAL '24 hours'),
+        0
+      )::text AS spent_24h_usd,
+      COUNT(*) FILTER (WHERE started_at > now() - INTERVAL '24 hours')::int
+        AS calls_24h,
+      COALESCE(
+        SUM(cost_usd) FILTER (WHERE started_at > now() - INTERVAL '24 hours')
+          / NULLIF(
+              COUNT(*) FILTER (WHERE started_at > now() - INTERVAL '24 hours'),
+              0
+            ),
+        0
+      )::text AS avg_cost_24h_usd
+    FROM agent_traces
+  `;
+  return (
+    row ?? {
+      total_usd: "0",
+      spent_24h_usd: "0",
+      calls_24h: 0,
+      avg_cost_24h_usd: "0",
+    }
+  );
+}
+
+/**
+ * Spend + latency aggregates per agent across all-time. Always returns one row
+ * per agent in the closed set (zero-call agents are filled in with zeros) so
+ * the table renders deterministically.
+ */
+export async function costPerAgent(): Promise<CostPerAgentRow[]> {
+  const sql = getSql();
+  const rows = await sql<
+    {
+      agent: string;
+      calls: number;
+      total_usd: string;
+      avg_usd: string;
+      p50_ms: number;
+      p95_ms: number;
+    }[]
+  >`
+    SELECT
+      agent,
+      COUNT(*)::int                                          AS calls,
+      COALESCE(SUM(cost_usd), 0)::text                       AS total_usd,
+      COALESCE(AVG(cost_usd), 0)::text                       AS avg_usd,
+      COALESCE(
+        percentile_cont(0.5)  WITHIN GROUP (ORDER BY duration_ms),
+        0
+      )::int                                                 AS p50_ms,
+      COALESCE(
+        percentile_cont(0.95) WITHIN GROUP (ORDER BY duration_ms),
+        0
+      )::int                                                 AS p95_ms
+    FROM agent_traces
+    GROUP BY agent
+  `;
+
+  const byAgent = new Map<string, CostPerAgentRow>();
+  for (const r of rows) byAgent.set(r.agent, r);
+
+  return AGENTS.map(
+    (agent): CostPerAgentRow =>
+      byAgent.get(agent) ?? {
+        agent,
+        calls: 0,
+        total_usd: "0",
+        avg_usd: "0",
+        p50_ms: 0,
+        p95_ms: 0,
+      }
+  );
+}
+
+/**
+ * Per-campaign spend rollup for the most recent N campaigns by start time.
+ * Left-joined against agent_traces so campaigns with zero traces still appear.
+ */
+export async function costPerCampaign(
+  limit = 20
+): Promise<CostPerCampaignRow[]> {
+  const sql = getSql();
+  return sql<CostPerCampaignRow[]>`
+    SELECT
+      c.id::text                              AS campaign_id,
+      c.target_subcategory                    AS target_subcategory,
+      c.status                                AS status,
+      COALESCE(SUM(at.cost_usd), 0)::text     AS total_usd,
+      COUNT(at.id)::int                       AS calls,
+      COALESCE(c.started_at, c.created_at)    AS started_at,
+      c.completed_at                          AS completed_at
+    FROM campaigns c
+    LEFT JOIN agent_traces at ON at.campaign_id = c.id
+    GROUP BY c.id, c.target_subcategory, c.status, c.started_at,
+             c.created_at, c.completed_at
+    ORDER BY COALESCE(c.started_at, c.created_at) DESC
+    LIMIT ${limit}
+  `;
 }

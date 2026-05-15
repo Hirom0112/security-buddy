@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { href: "/campaigns", label: "Campaigns" },
   { href: "/vulnerabilities", label: "Vulnerabilities" },
   { href: "/patches", label: "Patches" },
+  { href: "/cost", label: "Cost" },
 ] as const;
 
 interface ThemedNavProps {

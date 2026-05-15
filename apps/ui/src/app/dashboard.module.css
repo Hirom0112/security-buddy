@@ -1847,3 +1847,155 @@
   letter-spacing: 0.5px;
   word-break: break-word;
 }
+
+/* ─── DIFF VIEW (Before / After regression sweep) ─── */
+.diffGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .diffGrid { grid-template-columns: 1fr; }
+}
+.diffAggregate {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: 12px;
+  letter-spacing: 0.4px;
+  color: var(--sb-text);
+  padding: 10px 14px;
+  border: 1px solid var(--sb-border);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.18);
+  margin-bottom: 14px;
+}
+.diffAggregate strong { color: var(--sb-neon); font-weight: 600; }
+.replayList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.replayItem {
+  border: 1px solid var(--sb-border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: rgba(0, 0, 0, 0.18);
+}
+.replayItem + .replayItem { margin-top: 0; }
+.replayHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: 11px;
+  color: var(--sb-muted);
+  letter-spacing: 0.5px;
+}
+.replayIndex { color: var(--sb-text); font-weight: 600; }
+.replayEvidence {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--sb-text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+}
+.diffBackLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--sb-neon);
+  text-decoration: none;
+  margin-bottom: 16px;
+}
+.diffBackLink:hover { text-decoration: underline; }
+.diffPanelMetaRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: 11px;
+  color: var(--sb-muted);
+  letter-spacing: 0.5px;
+  margin-bottom: 12px;
+}
+.diffSubHead {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: 10px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--sb-muted);
+  margin: 14px 0 6px;
+}
+
+/* ─── COST DASHBOARD ─── */
+.costMetricGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 28px;
+}
+@media (max-width: 900px) {
+  .costMetricGrid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 540px) {
+  .costMetricGrid { grid-template-columns: 1fr; }
+}
+.costMetricCard {
+  background: var(--sb-card);
+  border: 1px solid var(--sb-border);
+  border-radius: 12px;
+  padding: 20px 22px;
+  position: relative;
+  overflow: hidden;
+  animation: card-in 0.5s ease-out both;
+}
+.costMetricCard::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--sb-neon-dim), transparent);
+}
+.costMetricLabel {
+  font-size: 10px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--sb-muted);
+  margin-bottom: 12px;
+}
+.costMetricValue {
+  font-family: "Bebas Neue", "Impact", sans-serif;
+  font-size: 34px;
+  letter-spacing: 1px;
+  line-height: 1;
+  color: var(--sb-purple);
+}
+.costMetricValuePlain {
+  color: var(--sb-text);
+}
+.numCell {
+  text-align: right !important;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  white-space: nowrap;
+}
+.costStack > * + * { margin-top: 24px; }
+.costZero {
+  color: var(--sb-muted2);
+}

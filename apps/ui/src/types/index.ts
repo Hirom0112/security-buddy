@@ -115,6 +115,34 @@ export interface VulnerabilityDetail extends VulnerabilityRow {
 }
 
 // ---------------------------------------------------------------------------
+// Regression runs
+// ---------------------------------------------------------------------------
+
+export type RegressionOutcome =
+  | "fix_verified"
+  | "regressed"
+  | "unstable"
+  | "target_unavailable";
+
+export interface RegressionReplay {
+  verdict: VerdictLabel;
+  evidence: string;
+  target_status_code: number;
+}
+
+export interface RegressionRun {
+  id: string;
+  vulnerability_id: string;
+  target_version_id: string;
+  replay_count: number;
+  verdicts: RegressionReplay[];
+  outcome: RegressionOutcome;
+  triggered_by: string;
+  started_at: string;
+  completed_at: string | null;
+}
+
+// ---------------------------------------------------------------------------
 // Patches
 // ---------------------------------------------------------------------------
 
@@ -155,4 +183,34 @@ export interface DashboardSummary {
   pending_patches: number;
   total_cost_usd: string;
   last_24h_cost_usd: string;
+}
+
+// ---------------------------------------------------------------------------
+// Cost dashboard
+// ---------------------------------------------------------------------------
+
+export interface CostTotals {
+  total_usd: string;
+  spent_24h_usd: string;
+  calls_24h: number;
+  avg_cost_24h_usd: string;
+}
+
+export interface CostPerAgentRow {
+  agent: string;
+  calls: number;
+  total_usd: string;
+  avg_usd: string;
+  p50_ms: number;
+  p95_ms: number;
+}
+
+export interface CostPerCampaignRow {
+  campaign_id: string;
+  target_subcategory: string | null;
+  status: string;
+  total_usd: string;
+  calls: number;
+  started_at: string;
+  completed_at: string | null;
 }

@@ -2,7 +2,9 @@ import { notFound, redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
 import { ThemedShell } from "@/components/themed-shell";
 import { SeverityBadge, VulnStatusBadge } from "@/components/badges";
+import Link from "next/link";
 import {
+  countRegressionRunsForVulnerability,
   getVulnerability,
   listPatchesForVulnerability,
 } from "@/lib/db/queries";
@@ -27,6 +29,7 @@ export default async function VulnerabilityDetailPage({ params }: PageProps) {
   if (vuln === null) notFound();
 
   const patches = await listPatchesForVulnerability(id);
+  const regressionCount = await countRegressionRunsForVulnerability(id);
 
   return (
     <ThemedShell
@@ -131,6 +134,14 @@ export default async function VulnerabilityDetailPage({ params }: PageProps) {
                 <span className={styles.panelCount}>({patches.length})</span>
               </div>
             </div>
+            {regressionCount > 0 && (
+              <Link
+                href={`/vulnerabilities/${vuln.id}/diff`}
+                className={`${styles.btn} ${styles.btnPrimary}`}
+              >
+                View before / after diff
+              </Link>
+            )}
           </div>
           <div className={styles.panelBody}>
             {patches.length === 0 ? (
