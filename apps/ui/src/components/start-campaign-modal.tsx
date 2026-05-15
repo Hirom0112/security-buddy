@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
   loadAttackTaxonomyAction,
@@ -103,6 +104,7 @@ export function StartCampaignModal({ open, onClose }: StartCampaignModalProps) {
   }, [taxonomy, category]);
 
   if (!open) return null;
+  if (typeof document === "undefined") return null;
 
   const sweepCount = SWEEP_BUCKET_COUNTS[sweepBreadth];
   const sweepBudgetNum = parseFloat(sweepBudget);
@@ -190,7 +192,7 @@ export function StartCampaignModal({ open, onClose }: StartCampaignModalProps) {
     });
   };
 
-  return (
+  return createPortal(
     <div
       ref={backdropRef}
       className={styles.modalBackdrop}
@@ -602,6 +604,7 @@ export function StartCampaignModal({ open, onClose }: StartCampaignModalProps) {
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
