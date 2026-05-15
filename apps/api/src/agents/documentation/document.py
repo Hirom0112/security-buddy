@@ -18,6 +18,9 @@ Framework citation enforcement (CLAUDE.md §6a):
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
+import re
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID  # noqa: TC003
@@ -47,6 +50,7 @@ from src.agents.documentation.schema import (
 from src.agents.documentation.severity import (
     classify_severity,
     combine_with_llm_proposal,
+    downgrade_for_no_disclosure,
 )
 from src.domain.errors import NotFoundError
 from src.domain.verdict import Verdict, VerdictLabel
@@ -57,6 +61,7 @@ from src.repositories.attack_taxonomy import AttackTaxonomyRepository
 from src.repositories.attacks import AttackRepository
 from src.repositories.campaigns import CampaignRepository
 from src.repositories.target_manifests import TargetManifestRepository
+from src.repositories.target_versions import TargetVersionRepository
 from src.repositories.verdicts import VerdictRepository
 from src.repositories.vulnerabilities import VulnerabilityRepository
 
@@ -70,8 +75,10 @@ class DocumentOutcome:
     vuln_id: str | None
     severity: Severity | None
     status: VulnerabilityStatus | None
-    skipped_reason: str | None  # "already_documented" | "not_exploit" | None
+    skipped_reason: str | None  # "already_documented" | "not_exploit" | "merged_variant" | None
     used_fallback: bool
+    merged_into_vuln_id: UUID | None = None
+    """When skipped_reason='merged_variant', the existing vuln we merged into."""
 
 
 async def run_document(
@@ -236,6 +243,30 @@ async def run_document(
     )
 
     # ------------------------------------------------------------------
+    # 5b. No-disclosure downgrade. When the Judge confirmed an exploit
+    #     (boundary crossed) but the target response carried no
+    #     exfiltrated content (data_actually_disclosed=False — empty
+    #     list, error envelope, refusal), drop severity one rank.
+    #     Operator queue ranks real-PHI-leak findings above
+    #     unauthorized-action-but-empty-response findings.
+    #
+    #     Backwards-compat: legacy verdict rows without the field
+    #     (`None`) skip the downgrade entirely. We never downgrade on
+    #     missing data.
+    # ------------------------------------------------------------------
+    if verdict.data_actually_disclosed is False:
+        pre_downgrade = final_severity
+        final_severity = downgrade_for_no_disclosure(final_severity)
+        log_event(
+            "severity_downgraded_no_disclosure",
+            verdict_id=str(verdict_id),
+            attack_id=str(attack.id),
+            original_severity=pre_downgrade.value,
+            new_severity=final_severity.value,
+            outcome="downgraded",
+        )
+
+    # ------------------------------------------------------------------
     # 6. Apply the critical soft-gate.
     # ------------------------------------------------------------------
     status = (
@@ -274,6 +305,72 @@ async def run_document(
             success_criteria=brief_criteria,
         )
 
+    # ------------------------------------------------------------------
+    # 7a. Response-shape dedup. The deterministic mutator can produce many
+    #     lexical variants of one seed (PLAN.md "Documentation: pre-write
+    #     3-replay + response-shape dedup" — the 9-permutation incident).
+    #     If an existing draft/open vuln in the same subcategory + same
+    #     target_version has an identical response-shape hash, increment
+    #     its variant_count and DO NOT mint a new VUL-NNNN.
+    #
+    #     Dedup window is target_version_id, not date — a target redeploy
+    #     resets the window so a re-introduced bug surfaces fresh.
+    # ------------------------------------------------------------------
+    response_text = attack.target_response or ""
+    shape_hash = _response_shape_hash(response_text)
+    current_target_version_id: UUID | None = None
+    if manifest is not None:
+        latest_tv = await TargetVersionRepository().get_latest(
+            session, target_id=manifest.target_id
+        )
+        if latest_tv is not None:
+            current_target_version_id = latest_tv.id
+
+    existing_variant = await vuln_repo.find_existing_variant(
+        session,
+        subcategory=attack.subcategory,
+        response_shape_hash=shape_hash,
+        target_version_id=current_target_version_id,
+    )
+    if existing_variant is not None:
+        merge_note = {
+            "at": _utc_iso(),
+            "actor": "documentation_agent",
+            "action": "merged_variant",
+            "source_attack_id": str(attack.id),
+            "source_verdict_id": str(verdict.id),
+            "response_shape_hash": shape_hash,
+            "reason": (
+                "identical response shape under same subcategory + "
+                "target_version — merged into canonical finding"
+            ),
+        }
+        merged = await vuln_repo.increment_variant_count(
+            session,
+            vulnerability_id=existing_variant.id,
+            merge_note=merge_note,
+        )
+        log_event(
+            "documentation_variant_merged",
+            verdict_id=str(verdict_id),
+            attack_id=str(attack.id),
+            merged_into_vulnerability_id=str(existing_variant.id),
+            merged_into_vuln_id=existing_variant.vuln_id,
+            response_shape_hash=shape_hash,
+            new_variant_count=(merged.variant_count if merged else None),
+            outcome="merged",
+        )
+        return DocumentOutcome(
+            verdict_id=verdict_id,
+            vulnerability_id=existing_variant.id,
+            vuln_id=existing_variant.vuln_id,
+            severity=Severity(existing_variant.severity.value),
+            status=VulnerabilityStatus(existing_variant.status.value),
+            skipped_reason="merged_variant",
+            used_fallback=used_fallback,
+            merged_into_vuln_id=existing_variant.id,
+        )
+
     row = await vuln_repo.create(
         session,
         attack_id=attack.id,
@@ -290,8 +387,9 @@ async def run_document(
         mitre_atlas_technique_id=citation.mitre_atlas_technique_id,
         hipaa_safeguard=citation.hipaa_safeguard,
         framework_versions=citation.framework_versions,
-        target_version_id=None,  # Slice 6 wires target_version
+        target_version_id=current_target_version_id,
         rubric_snapshot=rubric_snapshot,
+        response_shape_hash=shape_hash,
     )
 
     log_event(
@@ -337,7 +435,8 @@ async def _get_verdict_by_id(
     result = await session.execute(
         sa.text(
             "SELECT id, attack_id, verdict, confidence, evidence, notes,"
-            "  rubric_version, model_version, created_at"
+            "  rubric_version, model_version, created_at,"
+            "  data_actually_disclosed"
             " FROM verdicts WHERE id = :id"
         ),
         {"id": str(verdict_id)},
@@ -407,4 +506,110 @@ def _fallback_draft(
     )
 
 
-__all__ = ["DocumentOutcome", "FrameworkCitation", "run_document"]
+# ---------------------------------------------------------------------------
+# Response-shape hash
+# ---------------------------------------------------------------------------
+
+
+# Regexes used by _response_shape_hash. All compiled once at import.
+_RE_UUID: re.Pattern[str] = re.compile(
+    r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b",
+    re.IGNORECASE,
+)
+_RE_ISO_DATE: re.Pattern[str] = re.compile(
+    r"\d{4}-\d{2}-\d{2}(?:[Tt ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[Zz]|[+-]\d{2}:?\d{2})?)?",
+    re.IGNORECASE,
+)
+# Match standalone integers and floats. Walked after UUID/date so we don't
+# eat the digits inside those.
+_RE_NUMBER: re.Pattern[str] = re.compile(r"\b\d+(?:\.\d+)?\b")
+
+
+def _normalize_text(text: str) -> str:
+    """Collapse whitespace + replace volatile tokens with stable placeholders.
+
+    Order matters: dates before UUIDs (a date is shorter and won't shadow a
+    UUID), and both before NUM (which would otherwise eat the digits inside
+    them).
+    """
+    out = _RE_ISO_DATE.sub("DATE", text)
+    out = _RE_UUID.sub("UUID", out)
+    out = _RE_NUMBER.sub("NUM", out)
+    out = out.lower()
+    out = re.sub(r"\s+", " ", out).strip()
+    return out
+
+
+def _normalize_json(obj: Any) -> Any:
+    """Recursively normalize a JSON value: sort keys, scrub values to types.
+
+    For dedup we care about *shape*, not specific values. A list of patient
+    rows with three columns should hash the same regardless of the column
+    contents.
+    """
+    if isinstance(obj, dict):
+        # Sort keys so {"a":1,"b":2} and {"b":2,"a":1} hash identically.
+        return {k: _normalize_json(obj[k]) for k in sorted(obj.keys())}
+    if isinstance(obj, list):
+        # Lists keep order — order can be a real signal (top-N results) and
+        # collapsing it loses information. We do normalize each element.
+        return [_normalize_json(v) for v in obj]
+    if isinstance(obj, bool):
+        return "BOOL"
+    if isinstance(obj, (int, float)):
+        return "NUM"
+    if isinstance(obj, str):
+        return _normalize_text(obj)
+    if obj is None:
+        return None
+    # Fallback for unexpected JSON types.
+    return "VAL"
+
+
+def _response_shape_hash(target_response: str) -> str:
+    """Hash the *shape* of a target response.
+
+    Two responses that share keys, list lengths, and structural value types
+    but differ in numeric values, dates, UUIDs, or specific strings should
+    hash identically. This is the dedup key for the Documentation Agent
+    (PLAN.md "Documentation: pre-write 3-replay + response-shape dedup").
+
+    Algorithm:
+      1. If the input parses as JSON, recursively normalize: sort keys,
+         scrub primitives to type tokens (NUM, BOOL, etc.) and string text
+         via _normalize_text.
+      2. Otherwise treat the input as opaque text and run _normalize_text.
+      3. SHA-256 the canonical UTF-8 bytes. Return the first 16 hex chars.
+
+    16 chars (64 bits) is enough headroom: at 1,000 vulns the birthday
+    collision probability is ~3e-14, and the dedup is scoped by
+    subcategory + target_version anyway.
+    """
+    text = (target_response or "").strip()
+    canonical: str
+    if text:
+        try:
+            parsed = json.loads(text)
+        except (json.JSONDecodeError, ValueError):
+            canonical = _normalize_text(text)
+        else:
+            canonical = json.dumps(_normalize_json(parsed), sort_keys=True)
+    else:
+        canonical = ""
+    digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return digest[:16]
+
+
+def _utc_iso() -> str:
+    """ISO-8601 UTC timestamp for note entries. Wrapped for testability."""
+    from datetime import UTC, datetime
+
+    return datetime.now(UTC).isoformat()
+
+
+__all__ = [
+    "DocumentOutcome",
+    "FrameworkCitation",
+    "_response_shape_hash",
+    "run_document",
+]

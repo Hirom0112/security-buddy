@@ -122,6 +122,12 @@ export interface VulnerabilityDetail extends VulnerabilityRow {
   recommended_remediation: string;
   framework_versions: Record<string, string>;
   notes: VulnerabilityNote[];
+  /**
+   * Number of sibling exploits merged into this finding via the Documentation
+   * Agent's response-shape dedup. 1 = unique finding; >1 = canonical for a
+   * cluster of look-alikes. See migration 0013 + workers/documentation_worker.
+   */
+  variant_count: number;
 }
 
 // ---------------------------------------------------------------------------

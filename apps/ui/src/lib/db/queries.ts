@@ -235,6 +235,7 @@ export async function getVulnerability(
       recommended_remediation,
       framework_versions,
       notes,
+      variant_count,
       created_at
     FROM vulnerabilities
     WHERE id = ${id}::uuid

@@ -34,7 +34,8 @@ _VULN_COLS = (
     " reproduction_steps, observed_behavior, expected_behavior,"
     " recommended_remediation, status, owasp_llm_id, mitre_atlas_technique_id,"
     " hipaa_safeguard, framework_versions, target_version_id, rubric_snapshot,"
-    " created_at, version_id, notes"
+    " created_at, version_id, notes,"
+    " response_shape_hash, variant_count, variant_of_vuln_id"
 )
 
 # A stable advisory lock key for the vuln_id sequence. Postgres advisory
@@ -54,13 +55,8 @@ class VulnerabilityRepository:
     ) -> Vulnerability | None:
         result = await session.execute(
             sa.text(
-                "SELECT id, vuln_id, attack_id, verdict_id, severity, title,"
-                "  clinical_impact, reproduction_steps, observed_behavior,"
-                "  expected_behavior, recommended_remediation, status,"
-                "  owasp_llm_id, mitre_atlas_technique_id, hipaa_safeguard,"
-                "  framework_versions, target_version_id, rubric_snapshot,"
-                "  created_at, version_id, notes"
-                " FROM vulnerabilities WHERE attack_id = :attack_id"
+                f"SELECT {_VULN_COLS} FROM vulnerabilities"  # noqa: S608
+                " WHERE attack_id = :attack_id"
                 " ORDER BY created_at ASC LIMIT 1"
             ),
             {"attack_id": str(attack_id)},
@@ -90,6 +86,7 @@ class VulnerabilityRepository:
         framework_versions: dict[str, Any],
         target_version_id: UUID | None,
         rubric_snapshot: dict[str, Any] | None,
+        response_shape_hash: str | None = None,
     ) -> Vulnerability:
         """Insert a vulnerabilities row.
 
@@ -117,24 +114,20 @@ class VulnerabilityRepository:
 
         result = await session.execute(
             sa.text(
-                "INSERT INTO vulnerabilities"
+                "INSERT INTO vulnerabilities"  # noqa: S608
                 " (vuln_id, attack_id, verdict_id, severity, title,"
                 "  clinical_impact, reproduction_steps, observed_behavior,"
                 "  expected_behavior, recommended_remediation, status,"
                 "  owasp_llm_id, mitre_atlas_technique_id, hipaa_safeguard,"
-                "  framework_versions, target_version_id, rubric_snapshot)"
+                "  framework_versions, target_version_id, rubric_snapshot,"
+                "  response_shape_hash)"
                 " VALUES (:vuln_id, :attack_id, :verdict_id, :severity, :title,"
                 "  :impact, :repro, :obs, :exp, :remediation, :status,"
                 "  :owasp, :atlas, :hipaa,"
                 "  CAST(:fw_versions AS jsonb), :target_version_id,"
-                "  CAST(:rubric_snapshot AS jsonb))"
-                " RETURNING id, vuln_id, attack_id, verdict_id, severity,"
-                "   title, clinical_impact, reproduction_steps,"
-                "   observed_behavior, expected_behavior,"
-                "   recommended_remediation, status, owasp_llm_id,"
-                "   mitre_atlas_technique_id, hipaa_safeguard,"
-                "   framework_versions, target_version_id, rubric_snapshot,"
-                "   created_at, version_id, notes"
+                "  CAST(:rubric_snapshot AS jsonb),"
+                "  :response_shape_hash)"
+                f" RETURNING {_VULN_COLS}"
             ),
             {
                 "vuln_id": vuln_id,
@@ -156,6 +149,7 @@ class VulnerabilityRepository:
                 "rubric_snapshot": (
                     json.dumps(rubric_snapshot) if rubric_snapshot is not None else None
                 ),
+                "response_shape_hash": response_shape_hash,
             },
         )
         row = result.mappings().first()
@@ -214,6 +208,85 @@ class VulnerabilityRepository:
                 f" RETURNING {_VULN_COLS}"
             ),
             params,
+        )
+        row = result.mappings().first()
+        return Vulnerability.model_validate(dict(row)) if row else None
+
+    async def find_existing_variant(
+        self,
+        session: AsyncSession,
+        *,
+        subcategory: str,
+        response_shape_hash: str,
+        target_version_id: UUID | None,
+    ) -> Vulnerability | None:
+        """Find a draft/open vulnerability with the same response shape.
+
+        Filters by subcategory + response_shape_hash + target_version_id.
+        target_version_id scopes the window: when the target redeploys, hashes
+        get reconsidered fresh (new target_version_id -> no match -> mint).
+
+        Only matches rows whose status is still actionable (draft|open). A
+        patched/regressed/over_fit row is a historical record; a fresh sibling
+        attack should still mint independently so the regression harness can
+        do its job.
+
+        Cross-subcategory join: joins to `attacks` on attack_id so the
+        subcategory filter holds even when the same shape appears under a
+        different subcategory (we want NO cross-subcategory dedup — that
+        would mask a genuinely different bug class).
+        """
+        result = await session.execute(
+            sa.text(
+                f"SELECT {_VULN_COLS} FROM vulnerabilities AS v"  # noqa: S608
+                " JOIN attacks AS a ON a.id = v.attack_id"
+                " WHERE v.response_shape_hash = :h"
+                "   AND a.subcategory = :sub"
+                "   AND v.status IN ('draft','open')"
+                "   AND ("
+                "        (:tvid IS NULL AND v.target_version_id IS NULL)"
+                "     OR v.target_version_id = CAST(:tvid AS uuid)"
+                "   )"
+                " ORDER BY v.created_at ASC"
+                " LIMIT 1"
+            ),
+            {
+                "h": response_shape_hash,
+                "sub": subcategory,
+                "tvid": str(target_version_id) if target_version_id else None,
+            },
+        )
+        row = result.mappings().first()
+        if row is None:
+            return None
+        return Vulnerability.model_validate(dict(row))
+
+    async def increment_variant_count(
+        self,
+        session: AsyncSession,
+        *,
+        vulnerability_id: UUID,
+        merge_note: dict[str, Any],
+    ) -> Vulnerability | None:
+        """Bump variant_count and append a merged-variant note in one UPDATE.
+
+        Used by the Documentation Agent when a sibling attack hashes
+        identically to an existing draft/open vuln. We never mint a second
+        VUL-NNNN row in that case.
+        """
+        result = await session.execute(
+            sa.text(
+                "UPDATE vulnerabilities"  # noqa: S608
+                " SET variant_count = variant_count + 1,"
+                "     notes = notes || CAST(:note AS jsonb),"
+                "     version_id = version_id + 1"
+                " WHERE id = :id"
+                f" RETURNING {_VULN_COLS}"
+            ),
+            {
+                "id": str(vulnerability_id),
+                "note": json.dumps(merge_note),
+            },
         )
         row = result.mappings().first()
         return Vulnerability.model_validate(dict(row)) if row else None

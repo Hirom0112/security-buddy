@@ -177,6 +177,7 @@ async def run_judge(
         notes=judgment.notes if parse_failure_note is None else parse_failure_note,
         rubric_version=JUDGE_RUBRIC_VERSION,
         model_version=JUDGE_MODEL,
+        data_actually_disclosed=judgment.data_actually_disclosed,
     )
 
     # ------------------------------------------------------------------

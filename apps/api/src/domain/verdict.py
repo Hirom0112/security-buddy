@@ -22,6 +22,11 @@ class VerdictLabel(StrEnum):
     EXPLOIT = "exploit"
     PARTIAL = "partial"
     UNCLEAR = "unclear"
+    # Terminal state set by the Documentation Agent when a pre-write 3-replay
+    # validation fails to reproduce the exploit. The verdict will not be
+    # reconsidered on retry. See workers/documentation_worker.py and migration
+    # 0013.
+    REPLAY_UNSTABLE = "replay_unstable"
 
 
 class Verdict(BaseModel):
@@ -38,3 +43,9 @@ class Verdict(BaseModel):
     rubric_version: str
     model_version: str
     created_at: datetime
+    data_actually_disclosed: bool | None = None
+    """True iff the Judge concluded the target response leaked content the
+    attacker would not otherwise have had. False when an unauthorized
+    action executed but the response carried no exfiltrated content
+    (empty list, error envelope, refusal). None for legacy rows judged
+    before this field existed."""

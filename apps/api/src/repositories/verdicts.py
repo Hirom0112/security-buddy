@@ -35,7 +35,8 @@ class VerdictRepository:
         result = await session.execute(
             sa.text(
                 "SELECT id, attack_id, verdict, confidence, evidence, notes,"
-                "  rubric_version, model_version, created_at"
+                "  rubric_version, model_version, created_at,"
+                "  data_actually_disclosed"
                 " FROM verdicts WHERE attack_id = :attack_id"
             ),
             {"attack_id": str(attack_id)},
@@ -56,6 +57,7 @@ class VerdictRepository:
         notes: str | None,
         rubric_version: str,
         model_version: str,
+        data_actually_disclosed: bool | None = None,
     ) -> Verdict:
         """Insert a verdict row.
 
@@ -71,18 +73,21 @@ class VerdictRepository:
                 "WITH ins AS ("
                 "  INSERT INTO verdicts"
                 "    (attack_id, verdict, confidence, evidence, notes,"
-                "     rubric_version, model_version)"
+                "     rubric_version, model_version, data_actually_disclosed)"
                 "  VALUES (:attack_id, :verdict, :confidence, :evidence, :notes,"
-                "          :rubric_version, :model_version)"
+                "          :rubric_version, :model_version, :data_actually_disclosed)"
                 "  ON CONFLICT (attack_id) DO NOTHING"
                 "  RETURNING id, attack_id, verdict, confidence, evidence,"
-                "    notes, rubric_version, model_version, created_at"
+                "    notes, rubric_version, model_version, created_at,"
+                "    data_actually_disclosed"
                 ")"
                 "SELECT id, attack_id, verdict, confidence, evidence,"
-                "  notes, rubric_version, model_version, created_at FROM ins"
+                "  notes, rubric_version, model_version, created_at,"
+                "  data_actually_disclosed FROM ins"
                 " UNION ALL "
                 "SELECT id, attack_id, verdict, confidence, evidence,"
-                "  notes, rubric_version, model_version, created_at"
+                "  notes, rubric_version, model_version, created_at,"
+                "  data_actually_disclosed"
                 " FROM verdicts"
                 " WHERE attack_id = :attack_id AND NOT EXISTS (SELECT 1 FROM ins)"
             ),
@@ -94,9 +99,38 @@ class VerdictRepository:
                 "notes": notes,
                 "rubric_version": rubric_version,
                 "model_version": model_version,
+                "data_actually_disclosed": data_actually_disclosed,
             },
         )
         row = result.mappings().first()
         if row is None:
             raise RuntimeError("verdicts upsert returned no row — schema or session bug")
         return Verdict.model_validate(dict(row))
+
+    async def mark_replay_unstable(
+        self,
+        session: AsyncSession,
+        *,
+        verdict_id: UUID,
+        evidence: str,
+    ) -> Verdict | None:
+        """Flip a verdict to verdict='replay_unstable' (terminal).
+
+        Called by the Documentation Agent's pre-write replay validation when
+        the source attack does not reproduce. The row is preserved as an
+        audit record; the new verdict label keeps it out of the documentation
+        pipeline on retry. See migration 0013.
+        """
+        result = await session.execute(
+            sa.text(
+                "UPDATE verdicts SET verdict = 'replay_unstable',"
+                "  evidence = :evidence"
+                " WHERE id = :id"
+                " RETURNING id, attack_id, verdict, confidence, evidence,"
+                "   notes, rubric_version, model_version, created_at,"
+                "   data_actually_disclosed"
+            ),
+            {"id": str(verdict_id), "evidence": evidence[:1000]},
+        )
+        row = result.mappings().first()
+        return Verdict.model_validate(dict(row)) if row else None

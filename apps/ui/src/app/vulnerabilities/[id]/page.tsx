@@ -158,46 +158,106 @@ export default async function VulnerabilityDetailPage({ params }: PageProps) {
           </div>
         )}
 
-        {vuln.notes && vuln.notes.length > 0 && (
+        {vuln.variant_count > 1 && (
           <div className={styles.panel}>
             <div className={styles.panelHeader}>
               <div className={styles.panelHeaderLeft}>
                 <div className={styles.panelTitle}>
-                  Operator audit trail
+                  Merged variants
                   <span className={styles.panelCount}>
-                    ({vuln.notes.length})
+                    ({vuln.variant_count})
                   </span>
                 </div>
                 <div className={styles.panelSubtitle}>
-                  Durable record of operator actions on this finding.
+                  Sibling attacks that produced the same response shape and
+                  were merged into this canonical finding by the
+                  Documentation Agent. Dedup is scoped by subcategory +
+                  target_version.
                 </div>
               </div>
             </div>
             <div className={styles.panelBody}>
-              <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                {vuln.notes.map((n, i) => (
-                  <li
-                    key={`${n.at}-${i}`}
-                    className={styles.reviewItem}
-                  >
-                    <div>
-                      <div className={styles.reviewItemHead}>
-                        <span style={{ textTransform: "uppercase" }}>
-                          {n.action}
-                        </span>
-                        <span className={styles.dataMuted}>
-                          {n.actor} &middot;{" "}
-                          {new Date(n.at).toLocaleString()}
-                        </span>
-                      </div>
-                      <p className={styles.proseBody}>{n.reason}</p>
-                    </div>
-                  </li>
-                ))}
-              </ul>
+              {vuln.notes.filter((n) => n.action === "merged_variant")
+                .length === 0 ? (
+                <div className={styles.panelEmpty}>
+                  This is the canonical finding; merge details unavailable for
+                  this row.
+                </div>
+              ) : (
+                <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                  {vuln.notes
+                    .filter((n) => n.action === "merged_variant")
+                    .map((n, i) => (
+                      <li
+                        key={`merged-${n.at}-${i}`}
+                        className={styles.reviewItem}
+                      >
+                        <div>
+                          <div className={styles.reviewItemHead}>
+                            <span style={{ textTransform: "uppercase" }}>
+                              merged variant
+                            </span>
+                            <span className={styles.dataMuted}>
+                              {n.actor} &middot;{" "}
+                              {new Date(n.at).toLocaleString()}
+                            </span>
+                          </div>
+                          <p className={styles.proseBody}>{n.reason}</p>
+                        </div>
+                      </li>
+                    ))}
+                </ul>
+              )}
             </div>
           </div>
         )}
+
+        {vuln.notes &&
+          vuln.notes.filter((n) => n.action !== "merged_variant").length >
+            0 && (
+            <div className={styles.panel}>
+              <div className={styles.panelHeader}>
+                <div className={styles.panelHeaderLeft}>
+                  <div className={styles.panelTitle}>
+                    Operator audit trail
+                    <span className={styles.panelCount}>
+                      (
+                      {
+                        vuln.notes.filter((n) => n.action !== "merged_variant")
+                          .length
+                      }
+                      )
+                    </span>
+                  </div>
+                  <div className={styles.panelSubtitle}>
+                    Durable record of operator actions on this finding.
+                  </div>
+                </div>
+              </div>
+              <div className={styles.panelBody}>
+                <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                  {vuln.notes
+                    .filter((n) => n.action !== "merged_variant")
+                    .map((n, i) => (
+                      <li key={`${n.at}-${i}`} className={styles.reviewItem}>
+                        <div>
+                          <div className={styles.reviewItemHead}>
+                            <span style={{ textTransform: "uppercase" }}>
+                              {n.action}
+                            </span>
+                            <span className={styles.dataMuted}>
+                              {n.actor} &middot;{" "}
+                              {new Date(n.at).toLocaleString()}
+                            </span>
+                          </div>
+                          <p className={styles.proseBody}>{n.reason}</p>
+                        </div>
+                      </li>
+                    ))}
+                </ul>
+              </div>
+            </div>
+          )}
 
         <Section title="Clinical impact" body={vuln.clinical_impact} />
         <Section

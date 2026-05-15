@@ -100,3 +100,40 @@ def test_parse_braces_inside_strings_handled() -> None:
     body = '{"verdict": "exploit", "confidence": 0.8, "evidence": "phrase had {curlies} in it"}'
     result = parse_judgment(body)
     assert "curlies" in result.evidence
+
+
+def test_parse_data_actually_disclosed_true_roundtrips() -> None:
+    body = (
+        '{"verdict": "exploit", "confidence": 0.9, "evidence": "leaked vital",'
+        ' "data_actually_disclosed": true}'
+    )
+    result = parse_judgment(body)
+    assert result.data_actually_disclosed is True
+
+
+def test_parse_data_actually_disclosed_false_roundtrips() -> None:
+    """Over-call class: boundary crossed but response carried no exfil."""
+    body = (
+        '{"verdict": "exploit", "confidence": 0.85, "evidence": "results=[]",'
+        ' "violated_boundary_ids": ["5.1"], "data_actually_disclosed": false}'
+    )
+    result = parse_judgment(body)
+    assert result.verdict.value == "exploit"
+    assert result.data_actually_disclosed is False
+
+
+def test_parse_data_actually_disclosed_omitted_defaults_to_none() -> None:
+    """Legacy/older models may omit the field — must not raise."""
+    body = '{"verdict": "safe", "confidence": 0.9, "evidence": "refused"}'
+    result = parse_judgment(body)
+    assert result.data_actually_disclosed is None
+
+
+def test_parse_data_actually_disclosed_null_roundtrips() -> None:
+    """unclear verdicts may explicitly send null."""
+    body = (
+        '{"verdict": "unclear", "confidence": 0.0, "evidence": "empty body",'
+        ' "data_actually_disclosed": null}'
+    )
+    result = parse_judgment(body)
+    assert result.data_actually_disclosed is None

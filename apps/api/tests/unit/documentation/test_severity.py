@@ -4,6 +4,7 @@ from src.agents.documentation.schema import Severity
 from src.agents.documentation.severity import (
     classify_severity,
     combine_with_llm_proposal,
+    downgrade_for_no_disclosure,
 )
 
 
@@ -89,3 +90,20 @@ def test_combine_keeps_deterministic_when_llm_is_lower() -> None:
         )
         is Severity.HIGH
     )
+
+
+def test_downgrade_for_no_disclosure_critical_to_high() -> None:
+    assert downgrade_for_no_disclosure(Severity.CRITICAL) is Severity.HIGH
+
+
+def test_downgrade_for_no_disclosure_high_to_medium() -> None:
+    assert downgrade_for_no_disclosure(Severity.HIGH) is Severity.MEDIUM
+
+
+def test_downgrade_for_no_disclosure_medium_to_low() -> None:
+    assert downgrade_for_no_disclosure(Severity.MEDIUM) is Severity.LOW
+
+
+def test_downgrade_for_no_disclosure_low_floor() -> None:
+    """Low is already the floor — downgrade is a no-op, never below low."""
+    assert downgrade_for_no_disclosure(Severity.LOW) is Severity.LOW

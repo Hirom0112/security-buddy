@@ -94,3 +94,24 @@ def test_missing_status_omits_status_line() -> None:
         target_response_status=None,
     )
     assert "TARGET_RESPONSE_STATUS" not in messages[1].content
+
+
+def test_system_prompt_instructs_on_data_actually_disclosed() -> None:
+    """The over-call gate is enforced via prompt: the Judge must be told to
+    emit `data_actually_disclosed` and how to set it. Without this, the
+    Documentation Agent has no signal to downgrade no-exfil exploits."""
+    messages = build_judge_messages(
+        rubric=_rubric(),
+        attack_input="x",
+        target_response="y",
+        target_response_status=200,
+    )
+    system = messages[0].content
+    assert "data_actually_disclosed" in system
+    # The prompt must define both branches of the boolean — empty/error/
+    # refusal envelopes → false, PHI / canary / system content → true.
+    assert "empty" in system.lower()
+    assert "refusal" in system.lower() or "error" in system.lower()
+    # Concrete few-shot examples must be present so the model sees the
+    # over-call class (verdict=exploit, disclosure=false) at least once.
+    assert "out_of_panel" in system or "out-of-panel" in system.lower()
