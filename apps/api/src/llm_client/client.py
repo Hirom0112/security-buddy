@@ -84,6 +84,7 @@ class LLMClient:
         messages: list[Message],
         *,
         agent: str,
+        timeout: float = _DEFAULT_TIMEOUT,
         campaign_id: UUID | None = None,
         attack_id: UUID | None = None,
         verdict_id: UUID | None = None,
@@ -134,7 +135,7 @@ class LLMClient:
         cost_decimal: Decimal = Decimal("0")
 
         try:
-            async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT) as client:
+            async with httpx.AsyncClient(timeout=timeout) as client:
                 resp = await client.post(
                     f"{_OPENROUTER_BASE}/chat/completions",
                     headers={

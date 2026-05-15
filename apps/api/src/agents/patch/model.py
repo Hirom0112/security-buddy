@@ -13,7 +13,7 @@ PATCH_TEMPERATURE: Final[float] = 0.0
 PATCH_AGENT_TAG: Final[str] = "patch"
 
 # Wall-clock timeout for each Patch-Agent LLM call.
-PATCH_LLM_TIMEOUT_SECONDS: Final[float] = 60.0
+PATCH_LLM_TIMEOUT_SECONDS: Final[float] = 180.0
 
 # Max files the Patch Agent will inspect for a single vulnerability. Hard
 # cap so a runaway code-search prompt cannot saturate the LLM call.

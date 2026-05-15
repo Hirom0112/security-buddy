@@ -21,7 +21,6 @@ Architectural notes (CLAUDE.md):
 
 from __future__ import annotations
 
-import asyncio
 import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -152,16 +151,14 @@ async def run_propose(
     )
 
     try:
-        sel_completion = await asyncio.wait_for(
-            llm_client.complete(
-                model=PATCH_MODEL,
-                messages=selection_messages,
-                agent=PATCH_AGENT_TAG,
-                campaign_id=None,
-                attack_id=vuln.attack_id,
-                verdict_id=vuln.verdict_id,
-            ),
+        sel_completion = await llm_client.complete(
+            model=PATCH_MODEL,
+            messages=selection_messages,
+            agent=PATCH_AGENT_TAG,
             timeout=PATCH_LLM_TIMEOUT_SECONDS,
+            campaign_id=None,
+            attack_id=vuln.attack_id,
+            verdict_id=vuln.verdict_id,
         )
         selection = parse_file_selection(sel_completion.content)
     except (TimeoutError, PatchParseError) as exc:
@@ -205,16 +202,14 @@ async def run_propose(
     )
 
     try:
-        draft_completion = await asyncio.wait_for(
-            llm_client.complete(
-                model=PATCH_MODEL,
-                messages=draft_messages,
-                agent=PATCH_AGENT_TAG,
-                campaign_id=None,
-                attack_id=vuln.attack_id,
-                verdict_id=vuln.verdict_id,
-            ),
+        draft_completion = await llm_client.complete(
+            model=PATCH_MODEL,
+            messages=draft_messages,
+            agent=PATCH_AGENT_TAG,
             timeout=PATCH_LLM_TIMEOUT_SECONDS,
+            campaign_id=None,
+            attack_id=vuln.attack_id,
+            verdict_id=vuln.verdict_id,
         )
         draft: PatchDraft = parse_patch_draft(draft_completion.content)
     except (TimeoutError, PatchParseError) as exc:

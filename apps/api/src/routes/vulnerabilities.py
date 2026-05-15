@@ -12,21 +12,18 @@ The soft-gate workflow (CLAUDE.md §"Critical-severity soft gate"):
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated, Literal
+from collections.abc import AsyncGenerator
+from typing import Annotated, Literal
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.domain.vulnerability import Vulnerability, VulnerabilityStatus
 from src.observability.events import log_event
 from src.repositories.vulnerabilities import VulnerabilityRepository
 from src.workers.queue import enqueue_patch_propose
-
-if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator
-    from uuid import UUID
-
-    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 router = APIRouter(prefix="/api/v1/vulnerabilities", tags=["vulnerabilities"])
 
