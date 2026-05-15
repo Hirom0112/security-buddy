@@ -8,8 +8,17 @@
 **Author:** Hirom Alarcon · **Week:** 3 — Gauntlet AI Austin Admission Track
 **Status:** MVP loop verified end-to-end against a live deployed target on
 2026-05-12 — see [Live Demo Results](#live-demo-results-2026-05-12) below.
-Slice 8 polish (cost analysis, demo video, curated findings export) is
-in flight per [`docs/PLAN.md`](docs/PLAN.md).
+Three curated critical findings exported to [`docs/findings/`](docs/findings/)
+([VUL-0017](docs/findings/VUL-0017.md), [VUL-0021](docs/findings/VUL-0021.md),
+[VUL-0023](docs/findings/VUL-0023.md)). Every report cites
+**OWASP LLM Top 10 (2025)**, **MITRE ATLAS (v5.1.0)**, and the
+**HIPAA Security Rule** (frameworks snapshotted at confirmation time per
+`vulnerabilities.framework_versions`).
+
+**Demo Video:** *[pending]*
+
+**Architecture diagram:** See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §2
+(System Diagram).
 
 ---
 
@@ -30,10 +39,10 @@ submission.
 | **User Doc** (personas, workflows, automation justification) | [`docs/USERS.md`](docs/USERS.md) |
 | **Architecture Doc** (~500 word summary + diagram + agents + regression harness + observability + tradeoffs) | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
 | **Target Manifest** (the target's contract — endpoints, auth, trust boundaries, expected safe behaviors; consumed by Red Team and Judge) | [`docs/TARGET_MANIFEST.md`](docs/TARGET_MANIFEST.md) |
-| **Demo Video** (3–5 min, live attacks against the target) | *(in progress — Slice 8)* — link will appear here |
+| **Demo Video** (3–5 min, live attacks against the target) | *[pending]* |
 | **Eval Dataset** (≥3 attack categories, reproducible) | [`apps/api/tests/evals/`](apps/api/tests/evals/) — ground-truth sets + runners. Baselines tracked in [`docs/EVAL_BASELINES.md`](docs/EVAL_BASELINES.md). |
-| **Vulnerability Reports** (≥3, professional format) | [`docs/findings/`](docs/findings/) *(in progress — Slice 4 produces, Slice 8 curates)* |
-| **AI Cost Analysis** (dev spend + projections at 100/1K/10K/100K runs) | `docs/COST_ANALYSIS.md` *(in progress — Slice 8)* |
+| **Vulnerability Reports** (≥3, professional format) | [`docs/findings/VUL-0017.md`](docs/findings/VUL-0017.md), [`docs/findings/VUL-0021.md`](docs/findings/VUL-0021.md), [`docs/findings/VUL-0023.md`](docs/findings/VUL-0023.md) — three CRITICAL findings, all with OWASP LLM 2025 / MITRE ATLAS 5.1.0 / HIPAA citations. |
+| **AI Cost Analysis** (dev spend + projections at 100/1K/10K/100K runs) | [`docs/COST_ANALYSIS.md`](docs/COST_ANALYSIS.md) |
 | **Deployed Application** (publicly accessible target, platform running live tests) | URLs in [§ Deployed URLs](#deployed-urls) below. First live campaign results in [§ Live Demo Results](#live-demo-results-2026-05-12). |
 | **Social Post** (final submission only) | *(in progress — Slice 8)* |
 
@@ -97,8 +106,8 @@ All services live on Railway. Login required on the Security Buddy console
 - **Security Buddy API:** https://security-buddy-api-production.up.railway.app
 - **Target — OpenEMR Clinical Co-Pilot (chart system):** https://clinical-copilot-openemr-production.up.railway.app
 - **Target — Agent-API (the AI surface being attacked):** https://copilot-agent-api-production.up.railway.app
-- **Target repo (Patch Agent PR destination):** OpenEMR fork on this account
-  (PAT scoped to that fork only)
+- **Target repo (Patch Agent PR destination):** [`Hirom0112/openemr`](https://github.com/Hirom0112/openemr)
+  (GitHub PAT scoped to this fork only)
 
 ---
 
@@ -194,31 +203,67 @@ SESSION_SECRET=...                    # for Security Buddy's own password gate
 
 ---
 
-## Running Against the Live Target
+## Quick Start — Reproducing the Demo Loop End-to-End
 
-Once Slice 1 lands, a campaign against the live deployed Co-Pilot looks like:
+The full discover → confirm → patch → verify loop, exactly as recorded in
+the demo, runs against the live deployed target:
 
-```bash
-# 1. Log in to the Security Buddy UI at the deployed URL.
-# 2. Press "Start Campaign" on the dashboard, OR via API:
+1. **Log in.** Open https://security-buddy-production.up.railway.app and
+   authenticate with the operator password (single-user cookie session).
+2. **Trigger a campaign.** From the dashboard, click **Start Campaign**, or
+   POST to the API:
 
-curl -X POST https://<security-buddy>/api/v1/campaigns/start \
-  -H "Cookie: <session>" \
-  -H "Content-Type: application/json" \
-  -d '{"target_subcategory": "prompt_injection/indirect_via_upload", "budget_usd": 5.00}'
+   ```bash
+   curl -X POST https://security-buddy-api-production.up.railway.app/api/v1/campaigns/start \
+     -H "Cookie: <session>" \
+     -H "Content-Type: application/json" \
+     -d '{"target_subcategory": "data_exfiltration/cross_patient_leakage", "budget_usd": 5.00}'
+   ```
 
-# 3. Watch the campaign progress in the UI:
-#    Red Team generates variants → fires against target → Judge evaluates →
-#    Documentation drafts reports → Patch Agent opens a PR (for high/critical).
-# 4. Review the PR on GitHub. Merge or reject.
-# 5. Merge triggers a regression run; the Before/After diff view shows
-#    whether the fix held.
-```
+3. **Watch verdicts arrive.** The campaign detail page streams Judge verdicts
+   live as the Red Team fires attacks at the deployed Co-Pilot. Each row shows
+   the verdict (`exploit` / `partial` / `safe` / `unclear`), confidence, and
+   rubric version.
+4. **Confirm a critical finding.** Open `/vulnerabilities`, pick a draft
+   CRITICAL finding (e.g., VUL-0017/0021/0023 from the exported set), review
+   the Documentation Agent report (framework citations included), and confirm
+   it. Confirming triggers the Patch Agent.
+5. **See the PR.** The Patch Agent opens a branch and PR against
+   [`Hirom0112/openemr`](https://github.com/Hirom0112/openemr). The PR link
+   appears on the vulnerability page.
+6. **Merge the PR.** Review the proposed fix on GitHub and merge. The merge
+   webhook flips the vulnerability to `proposed_fix` and auto-enqueues a
+   regression sweep.
+7. **See the regression result.** Open `/vulnerabilities/[id]/diff` — the
+   Before/After view shows the original exploit response on the left and the
+   post-patch response on the right, with the frozen rubric verdict on each
+   side. If the fix held, status moves to `resolved`.
+8. **(Optional) Check spend.** `/cost` shows live LLM cost telemetry sourced
+   from `agent_traces`, broken down per agent and per campaign.
 
-All attacks against the target are rate-limited to **10 requests/second**
-and capped at **1000 attacks per campaign**. The platform attacks only its
-configured target, authenticated as the synthetic test persona `Sara Chen`.
-**All target data is synthetic — no real PHI ever.**
+All attacks against the target are rate-limited to **10 requests/second** and
+capped at **1000 attacks per campaign**, enforced in the Red Team worker —
+not in any LLM prompt (see [`CLAUDE.md`](CLAUDE.md) §"Critical Rules" §4).
+The platform attacks only its configured target, authenticated as the
+synthetic test persona `Sara Chen`. **All target data is synthetic — no real
+PHI, ever.**
+
+---
+
+## Curated Findings
+
+Three CRITICAL findings exported from live campaigns against the deployed
+Clinical Co-Pilot. Each report includes the original prompt, the target's
+response, Judge verdict + confidence, severity rationale, and framework
+citations (OWASP LLM Top 10 2025 / MITRE ATLAS v5.1.0 / HIPAA Security Rule
+§164.312) snapshotted at confirmation time:
+
+- [`docs/findings/VUL-0017.md`](docs/findings/VUL-0017.md) — Out-of-panel
+  patient record query executed without authorization check.
+- [`docs/findings/VUL-0021.md`](docs/findings/VUL-0021.md) — Role-override
+  prompt injection enables cross-patient medication data exfiltration.
+- [`docs/findings/VUL-0023.md`](docs/findings/VUL-0023.md) — Lab results
+  and vitals disclosed for out-of-panel patient without authorization.
 
 ---
 
@@ -257,8 +302,8 @@ security_buddy/
 │   ├── TARGET_MANIFEST.md     ← target contract consumed by Red Team + Judge
 │   ├── PLAN.md                ← slice-by-slice build plan
 │   ├── EVAL_BASELINES.md      ← baselined accuracy for every LLM component
-│   ├── COST_ANALYSIS.md       ← (Slice 8) real spend + scale projections
-│   └── findings/              ← (Slice 4+) vulnerability reports
+│   ├── COST_ANALYSIS.md       ← real spend + projections at 100/1K/10K/100K runs
+│   └── findings/              ← exported vulnerability reports (VUL-0017, 0021, 0023)
 ├── apps/
 │   ├── api/                   ← FastAPI + LangGraph + arq workers
 │   │   └── tests/evals/       ← ground-truth eval sets + runners
@@ -274,15 +319,15 @@ security_buddy/
 Tracked in [`docs/PLAN.md`](docs/PLAN.md). Each slice is vertical
 (schema → backend → UI → tests → docs) and merged one at a time.
 
-- [x] **Slice 0** — Foundation: monorepo, schema, `llm_client`, health endpoint *(Railway deploy pending operator keys)*
+- [x] **Slice 0** — Foundation: monorepo, schema, `llm_client`, health endpoint
 - [x] **Slice 1** — Red Team Agent running live against the target
-- [~] **Slice 2** — Judge Agent + ground-truth eval baseline *(runner + ground-truth in; first baseline run pending)*
+- [x] **Slice 2** — Judge Agent + ground-truth eval baseline (0.875 accuracy)
 - [x] **Slice 3** — Orchestrator with priority function and budget enforcement
 - [x] **Slice 4** — Documentation Agent with framework citations
 - [x] **Slice 5** — Patch Agent + GitHub integration + branch protection
-- [~] **Slice 6** — Regression Harness (replay-N, frozen rubrics, cross-category) *(webhook → proposed_fix working; regression sweep for VUL-0008 pending)*
-- [x] **Slice 7** — Security Buddy UI: dashboard, before/after diff, PR queue
-- [ ] **Slice 8** — Cost analysis, observability dashboards, demo video
+- [x] **Slice 6** — Regression Harness (replay, frozen rubrics, webhook → auto-sweep)
+- [x] **Slice 7** — Security Buddy UI: dashboard, before/after diff, PR queue, `/cost`
+- [~] **Slice 8** — Cost analysis + curated findings shipped; demo video pending
 
 ---
 

@@ -275,18 +275,49 @@ to anything except its own coordination tables.
 **Role:** Execution. Generates and runs adversarial attacks against the live
 target.
 
-**Model:** An open-weights, lightly-aligned model accessed via OpenRouter
-(default: Llama 3.1 70B Instruct, with the ability to swap to Qwen, DeepSeek,
-or a Dolphin variant via config). This choice is deliberate. Frontier models
-trained to refuse offensive security workflows are unreliable for sustained
-adversarial generation — refusals are unpredictable, vary day to day, and
-introduce non-determinism in the platform's coverage. An open-weights model
-with weaker refusal training is more consistently useful for this role.
+**Model:** Hybrid by design — a **deterministic floor** plus an **LLM ceiling**,
+not one or the other.
 
-The case study explicitly anticipates this decision:
+- **Deterministic floor.** Three pure-Python mutation strategies (lexical,
+  structural, multi-turn) over a curated seed library guarantee baseline
+  coverage of every subcategory in the taxonomy. They never refuse, never
+  drift, cost nothing per call, and produce bit-exact replayable output. This
+  is what makes coverage measurable and regressions reproducible.
+- **LLM ceiling.** Llama 3.3 70B Instruct (uncensored) accessed via
+  OpenRouter, invoked through an `LLMMutationStrategy` that sits alongside the
+  three deterministic strategies and is tagged
+  `mutation_strategy='llm_generated'` in `attacks` rows. Llama exists in this
+  loop because string-mutating a seed cannot reach the attack shapes that
+  OWASP LLM05/06/07 require — those need *reasoning* about the target's
+  trust boundaries, not transformations over its prior payloads. An attacker
+  who can only paraphrase will exhaust the bounded space of paraphrases
+  faster than the target acquires new attack surface; an attacker that can
+  reason about the target keeps finding things.
+
+The case study explicitly anticipates the model choice for the LLM half:
 
 > *"Some commercial LLMs are intentionally trained to avoid offensive security
 > workflows, making them unreliable for certain forms of adversarial testing."*
+
+Frontier models refuse offensive workflows unpredictably. Llama 3.3 70B
+lacks that refusal training and is consistently willing — at the cost of
+producing unsafe content, which is *expected* and handled by the trust-
+boundary rules in CLAUDE.md §4 (attack payloads are data, never instructions
+into another LLM's prompt; the Judge is a different model class).
+
+**Containment of non-determinism.** The LLM is non-deterministic at
+*generation* time only. Each variant text is persisted in
+`attacks.attack_input` the moment it is generated, and every downstream
+consumer — the Judge, the Documentation Agent, the regression harness —
+operates on the persisted string, never re-prompts Llama. Replay is
+bit-exact: a regression run six months later fires the *same bytes* against
+the new target version, and the Judge evaluates with the rubric snapshot
+that was frozen at confirmation time. The platform gets creative depth at
+discovery time without sacrificing baseline reproducibility downstream.
+
+**Fallback.** If OpenRouter is down or the campaign budget cap is hit, the
+worker drops back to deterministic-only and the loop keeps running. The LLM
+strategy is an addition, not a dependency.
 
 **Inputs:**
 
