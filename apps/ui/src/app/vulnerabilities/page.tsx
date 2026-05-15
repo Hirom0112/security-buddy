@@ -66,7 +66,7 @@ export default async function VulnerabilitiesPage({
   } else if (activeFilter === DISMISSED_FILTER) {
     rest = vulns.filter((v) => v.is_dismissed);
   } else if (activeFilter === "draft") {
-    rest = [];
+    rest = drafts;
   } else {
     rest = vulns.filter((v) => v.status === activeFilter);
   }
