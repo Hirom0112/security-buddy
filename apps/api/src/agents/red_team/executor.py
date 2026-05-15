@@ -210,6 +210,46 @@ async def run_executor(
     def _pick_strategy(variant_idx: int) -> MutationStrategyName:
         return rotation[variant_idx % len(rotation)]
 
+    def _rng_seed_for(variant_idx: int) -> int:
+        return int.from_bytes(brief_id.bytes[:4], "big") ^ variant_idx
+
+    # ------------------------------------------------------------------
+    # Pre-batch LLM variants: group every variant slot whose strategy is
+    # "llm" by its assigned seed, then issue one batched amutate() call per
+    # group. This replaces the previous per-variant amutate(count=1, ...)
+    # loop (~$0.02/variant on Llama 3.3 70B) with a single completion that
+    # returns N variants (~$0.001-0.005/variant).
+    # ------------------------------------------------------------------
+    llm_variants_by_slot: dict[int, Variant] = {}
+    if llm_client is not None:
+        # Collect (variant_idx, seed) for every LLM slot.
+        llm_slots: list[tuple[int, SeedAttack]] = [
+            (i, _pick_seed(i)) for i in range(variant_count) if _pick_strategy(i) == "llm"
+        ]
+        # Group by seed_id; preserve slot order so variant_index assignment is stable.
+        slots_by_seed: dict[str, list[int]] = {}
+        seeds_by_id: dict[str, SeedAttack] = {}
+        for slot_idx, slot_seed in llm_slots:
+            slots_by_seed.setdefault(slot_seed.seed_id, []).append(slot_idx)
+            seeds_by_id[slot_seed.seed_id] = slot_seed
+
+        llm_strategy = get_strategy("llm", llm_client=llm_client, campaign_id=campaign.id)
+        for seed_id, slot_indices in slots_by_seed.items():
+            seed_for_group = seeds_by_id[seed_id]
+            # Use the rng_seed of the first slot in this group as the bucket seed.
+            # Individual slots keep their own variant_idx-derived rng_seed in
+            # attack_metadata below.
+            group_rng_seed = _rng_seed_for(slot_indices[0])
+            assert isinstance(llm_strategy, AsyncMutationStrategy)
+            produced: list[Variant] = await llm_strategy.amutate(
+                seed_for_group,
+                count=len(slot_indices),
+                rng_seed=group_rng_seed,
+            )
+            for slot_pos, slot_idx in enumerate(slot_indices):
+                if slot_pos < len(produced):
+                    llm_variants_by_slot[slot_idx] = produced[slot_pos]
+
     # ------------------------------------------------------------------
     # Step 4: Execute variants against the target.
     # ------------------------------------------------------------------
@@ -244,30 +284,46 @@ async def run_executor(
 
             seed = _pick_seed(variant_idx)
             strategy_name = _pick_strategy(variant_idx)
-            strategy = get_strategy(
-                strategy_name,
-                llm_client=llm_client,
-                campaign_id=campaign.id,
-            )
+            rng_seed = _rng_seed_for(variant_idx)
 
-            # Generate one variant. rng_seed combines brief_id bytes + variant_idx.
-            # Deterministic strategies are exactly reproducible; the LLM strategy
-            # forwards rng_seed as a variation hint (not a hard determinism gate).
-            rng_seed = int.from_bytes(brief_id.bytes[:4], "big") ^ variant_idx
-            if isinstance(strategy, AsyncMutationStrategy):
-                variants: list[Variant] = await strategy.amutate(seed, count=1, rng_seed=rng_seed)
+            # LLM-strategy slots were pre-batched above into one call per
+            # (seed_id) group. Look up the produced variant for this slot
+            # rather than issuing another Llama completion here.
+            if strategy_name == "llm":
+                variant_opt = llm_variants_by_slot.get(variant_idx)
+                if variant_opt is None:
+                    log_event(
+                        "red_team_variant_skipped",
+                        brief_id=str(brief_id),
+                        variant_index=variant_idx,
+                        strategy=strategy_name,
+                        reason="llm_batch_returned_short",
+                    )
+                    continue
+                variant = variant_opt
             else:
-                variants = strategy.mutate(seed, count=1, rng_seed=rng_seed)
-            if not variants:
-                log_event(
-                    "red_team_variant_skipped",
-                    brief_id=str(brief_id),
-                    variant_index=variant_idx,
-                    strategy=strategy_name,
-                    reason="mutate_returned_empty",
+                strategy = get_strategy(
+                    strategy_name,
+                    llm_client=llm_client,
+                    campaign_id=campaign.id,
                 )
-                continue
-            variant = variants[0]
+                # Deterministic strategies are exactly reproducible.
+                if isinstance(strategy, AsyncMutationStrategy):
+                    variants: list[Variant] = await strategy.amutate(
+                        seed, count=1, rng_seed=rng_seed
+                    )
+                else:
+                    variants = strategy.mutate(seed, count=1, rng_seed=rng_seed)
+                if not variants:
+                    log_event(
+                        "red_team_variant_skipped",
+                        brief_id=str(brief_id),
+                        variant_index=variant_idx,
+                        strategy=strategy_name,
+                        reason="mutate_returned_empty",
+                    )
+                    continue
+                variant = variants[0]
 
             # Build metadata dict for DB storage.
             meta: dict[str, str | int | bool] = {

@@ -50,6 +50,13 @@ _TRANSFORM_TAG = "llm:llama-3.3-70b"
 # returns [] so the executor falls back to other strategies in the rotation.
 _LLM_TIMEOUT_S = 60.0
 
+# Maximum variants requested per single Llama completion. Keeps output token
+# usage bounded; when amutate(count=N) with N > batch_size, the strategy
+# issues ceil(N / batch_size) sequential calls. Tuned to balance per-variant
+# cost (lower N/call = wasteful) and output-token risk (very large N risks
+# truncated JSON).
+_BATCH_SIZE = 8
+
 
 # ---------------------------------------------------------------------------
 # Strict response schema. The model returns prose? We return [].
@@ -144,8 +151,101 @@ class LLMMutationStrategy:
     async def amutate(self, seed: SeedAttack, count: int, rng_seed: int) -> list[Variant]:
         """Generate up to `count` LLM-authored variants of `seed`.
 
-        Returns [] on any failure (refusal, malformed JSON, schema violation,
-        timeout) — never raises.
+        Batches the request into ceil(count / _BATCH_SIZE) LLM completions so
+        that, for typical N <= _BATCH_SIZE, exactly ONE Llama call is made.
+        This is the cost-optimized replacement for the previous per-variant
+        loop in the executor (one Llama call per variant ≈ $0.02/variant
+        observed; batched ≈ $0.001-0.005/variant).
+
+        Returns whatever variants the LLM produced. If a batch fails (refusal,
+        malformed JSON, schema violation, timeout), that batch contributes
+        zero variants but subsequent batches still run. If the total returned
+        falls short of `count`, logs ``red_team_llm_partial_batch`` and
+        returns what we got — no silent retry, no deterministic padding
+        (that's the executor's concern).
+        """
+        if count <= 0:
+            return []
+
+        batches: list[int] = []
+        remaining = count
+        while remaining > 0:
+            take = min(remaining, _BATCH_SIZE)
+            batches.append(take)
+            remaining -= take
+
+        collected: list[_LLMVariant] = []
+        for batch_idx, batch_count in enumerate(batches):
+            # Vary rng_seed per batch so repeated calls do not request
+            # identical variants — keeps the prompt-side "variation hint"
+            # honest across the batched chunks.
+            batch_rng_seed = rng_seed ^ (batch_idx * 0x9E3779B1)
+            batch_variants = await self._amutate_one_batch(
+                seed=seed,
+                count=batch_count,
+                rng_seed=batch_rng_seed,
+            )
+            collected.extend(batch_variants)
+
+        trimmed = collected[:count]
+
+        if len(trimmed) < count:
+            log_event(
+                "red_team_llm_partial_batch",
+                seed_id=seed.seed_id,
+                subcategory=seed.subcategory,
+                rng_seed=rng_seed,
+                requested=count,
+                returned=len(trimmed),
+                batches=len(batches),
+                outcome="partial",
+            )
+
+        variants: list[Variant] = []
+        for idx, entry in enumerate(trimmed):
+            variants.append(
+                Variant(
+                    seed_id=seed.seed_id,
+                    variant_index=idx,
+                    mutation_strategy="llm",
+                    category=seed.category,
+                    subcategory=seed.subcategory,
+                    attack_input=entry.attack_input,
+                    attack_metadata={
+                        "transform": _TRANSFORM_TAG,
+                        "transform_label": entry.transform_label or "unknown",
+                        "rng_seed": rng_seed,
+                    },
+                    judge_rubric_hints=seed.judge_rubric_hints,
+                    target_endpoint=seed.target_endpoint,
+                )
+            )
+
+        if variants:
+            log_event(
+                "red_team_llm_variants_generated",
+                seed_id=seed.seed_id,
+                subcategory=seed.subcategory,
+                rng_seed=rng_seed,
+                requested=count,
+                returned=len(variants),
+                batches=len(batches),
+                outcome="success",
+            )
+        return variants
+
+    async def _amutate_one_batch(
+        self,
+        *,
+        seed: SeedAttack,
+        count: int,
+        rng_seed: int,
+    ) -> list[_LLMVariant]:
+        """Issue exactly one Llama completion requesting `count` variants.
+
+        Returns parsed _LLMVariant entries (without yet building Variant
+        objects, since amutate's caller needs to renumber variant_index
+        across batches). Returns [] on any failure — never raises.
         """
         messages = [
             Message(role="system", content=_SYSTEM_PROMPT),
@@ -236,35 +336,4 @@ class LLMMutationStrategy:
             )
             return []
 
-        trimmed = valid[:count]
-
-        variants: list[Variant] = []
-        for idx, entry in enumerate(trimmed):
-            variants.append(
-                Variant(
-                    seed_id=seed.seed_id,
-                    variant_index=idx,
-                    mutation_strategy="llm",
-                    category=seed.category,
-                    subcategory=seed.subcategory,
-                    attack_input=entry.attack_input,
-                    attack_metadata={
-                        "transform": _TRANSFORM_TAG,
-                        "transform_label": entry.transform_label or "unknown",
-                        "rng_seed": rng_seed,
-                    },
-                    judge_rubric_hints=seed.judge_rubric_hints,
-                    target_endpoint=seed.target_endpoint,
-                )
-            )
-
-        log_event(
-            "red_team_llm_variants_generated",
-            seed_id=seed.seed_id,
-            subcategory=seed.subcategory,
-            rng_seed=rng_seed,
-            requested=count,
-            returned=len(variants),
-            outcome="success",
-        )
-        return variants
+        return valid[:count]

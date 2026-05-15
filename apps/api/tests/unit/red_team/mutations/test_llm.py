@@ -174,6 +174,91 @@ async def test_amutate_tags_llm_call_with_agent_and_campaign(
 
 
 @pytest.mark.asyncio
+async def test_amutate_count_5_makes_exactly_one_llm_call(
+    strategy: LLMMutationStrategy,
+    llm_client: Any,
+    cross_patient_seed: SeedAttack,
+) -> None:
+    """count=5 (<= _BATCH_SIZE=8) MUST be a single Llama completion.
+
+    This is the core cost-savings invariant: prior to batching, the executor
+    made one Llama call per variant (~$0.02/variant). After batching, a brief
+    that asks for N <= batch_size variants from the same seed must consume
+    exactly one completion.
+    """
+    payload = json.dumps(
+        {"variants": [{"attack_input": f"v{i}", "transform_label": "t"} for i in range(5)]}
+    )
+    llm_client.complete = AsyncMock(return_value=_make_completion(payload))
+
+    variants = await strategy.amutate(cross_patient_seed, count=5, rng_seed=1)
+
+    assert len(variants) == 5
+    assert llm_client.complete.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_amutate_count_larger_than_batch_size_chunks_calls(
+    strategy: LLMMutationStrategy,
+    llm_client: Any,
+    cross_patient_seed: SeedAttack,
+) -> None:
+    """count > _BATCH_SIZE issues ceil(count/_BATCH_SIZE) calls.
+
+    With _BATCH_SIZE=8 and count=17, the strategy should issue 3 calls
+    (8 + 8 + 1).
+    """
+    # Each call returns 8 variants — generous, so total > requested and the
+    # collected list gets trimmed to count.
+    payload = json.dumps(
+        {"variants": [{"attack_input": f"v{i}", "transform_label": "t"} for i in range(8)]}
+    )
+    llm_client.complete = AsyncMock(return_value=_make_completion(payload))
+
+    variants = await strategy.amutate(cross_patient_seed, count=17, rng_seed=99)
+
+    assert llm_client.complete.call_count == 3
+    # Strategy collected min(3 * 8, 17) = 17 variants total.
+    assert len(variants) == 17
+
+
+@pytest.mark.asyncio
+async def test_amutate_partial_batch_falls_through_and_logs(
+    strategy: LLMMutationStrategy,
+    llm_client: Any,
+    cross_patient_seed: SeedAttack,
+) -> None:
+    """When the LLM returns fewer variants than requested, amutate returns
+    what it got AND emits red_team_llm_partial_batch (NOT a silent retry).
+    """
+    # Request 5, but LLM only returns 2.
+    payload = json.dumps(
+        {
+            "variants": [
+                {"attack_input": "v0", "transform_label": "t"},
+                {"attack_input": "v1", "transform_label": "t"},
+            ]
+        }
+    )
+    llm_client.complete = AsyncMock(return_value=_make_completion(payload))
+
+    with patch("src.agents.red_team.mutations.llm.log_event") as mock_log:
+        variants = await strategy.amutate(cross_patient_seed, count=5, rng_seed=7)
+
+    assert len(variants) == 2  # what we got, no padding
+    # Exactly one call — no silent retry on short batch.
+    assert llm_client.complete.call_count == 1
+    event_names = [call.args[0] for call in mock_log.call_args_list]
+    assert "red_team_llm_partial_batch" in event_names
+    # And the partial event records requested vs returned.
+    partial_call = next(
+        c for c in mock_log.call_args_list if c.args[0] == "red_team_llm_partial_batch"
+    )
+    assert partial_call.kwargs["requested"] == 5
+    assert partial_call.kwargs["returned"] == 2
+
+
+@pytest.mark.asyncio
 async def test_amutate_variant_metadata_records_rng_seed_and_transform_label(
     strategy: LLMMutationStrategy,
     llm_client: Any,
