@@ -2,6 +2,28 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Cyber-noir theme variables. Hoisted out of dashboard.module.css so
+ * portaled modals (createPortal target = document.body) and any DOM
+ * outside the .root wrapper still resolve them. */
+:root {
+  --sb-bg: #0a0a0f;
+  --sb-surface: #0f0f18;
+  --sb-card: #12121e;
+  --sb-border: #1e1e32;
+  --sb-border-bright: #2a2a44;
+  --sb-neon: #00f5c4;
+  --sb-accent: #00f5c4;
+  --sb-neon-dim: rgba(0, 245, 196, 0.12);
+  --sb-neon-glow: rgba(0, 245, 196, 0.4);
+  --sb-purple: #7c3aed;
+  --sb-danger: #ff3d6b;
+  --sb-warn: #ffb830;
+  --sb-text: #e2e8f0;
+  --sb-fg: #e2e8f0;
+  --sb-muted: #8a93a4;
+  --sb-muted2: #2d3748;
+}
+
 @layer base {
   :root {
     --background: 0 0% 100%;
