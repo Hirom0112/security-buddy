@@ -71,8 +71,6 @@ export default async function VulnerabilitiesPage({
     rest = vulns.filter((v) => v.status === activeFilter);
   }
 
-  const draftOnly = activeFilter === "draft";
-
   return (
     <ThemedShell
       eyebrow="// Findings"
@@ -104,7 +102,7 @@ export default async function VulnerabilitiesPage({
       <div className={styles.panelStack}>
         <FilterPills active={activeFilter} dismissedCount={dismissedCount} />
 
-        {drafts.length > 0 && !draftOnly && activeFilter !== DISMISSED_FILTER && (
+        {drafts.length > 0 && activeFilter === null && (
           <div className={styles.panel}>
             <div className={styles.panelHeader}>
               <div className={styles.panelHeaderLeft}>
