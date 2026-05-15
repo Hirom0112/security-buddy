@@ -635,3 +635,154 @@ async def campaign_events(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# Lightweight JSON snapshot for polling clients.
+#
+# The SSE endpoint above is the preferred wire for active campaign tracking,
+# but the dashboard's live-status widget polls a plain JSON GET so it can
+# survive proxy boundaries that drop long-lived connections (notably some
+# preview/CDN edges). This route returns the same counts the SSE snapshot
+# uses, plus per-status attack/verdict/vulnerability buckets the widget
+# renders.
+#
+# Cost: a single round-trip with 4 small aggregate queries. Single-operator
+# scale — negligible. Auth-gated like every other /api/v1 route.
+# ---------------------------------------------------------------------------
+
+
+class CampaignLiveStatusResponse(BaseModel):
+    """JSON snapshot of a campaign's live progress.
+
+    Hand-mirrored on the UI as `CampaignLiveStatus` in
+    `apps/ui/src/components/live-campaign-status.tsx`. Keep them in sync.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    campaign_id: UUID
+    status: str
+    is_terminal: bool
+    attacks: dict[str, int] = Field(
+        description=(
+            "Attack counts bucketed by status: keys are "
+            "pending_execution, awaiting_judgment, judged, plus 'total'."
+        )
+    )
+    verdicts: dict[str, int] = Field(
+        description=(
+            "Verdict counts bucketed by label: keys are "
+            "safe, exploit, partial, unclear, plus 'total'."
+        )
+    )
+    vulnerabilities: dict[str, int] = Field(
+        description=(
+            "Vulnerability rows written for this campaign, bucketed by status."
+            " Always includes 'total'."
+        )
+    )
+
+
+@router.get(
+    "/campaigns/{campaign_id}/live-status",
+    response_model=CampaignLiveStatusResponse,
+    summary="Lightweight JSON snapshot for client-side polling",
+)
+async def campaign_live_status(
+    campaign_id: UUID,
+    request: Request,
+    _operator: Annotated[_OperatorIdentity, Depends(require_session)],
+    db: Annotated[AsyncSession, Depends(_get_db_session)],
+) -> Any:
+    """Return the campaign's current status + counts as a plain JSON object."""
+    status_row = await db.execute(
+        sa.text("SELECT status::text AS status FROM campaigns WHERE id = :id"),
+        {"id": str(campaign_id)},
+    )
+    status_mapping = status_row.mappings().first()
+    if status_mapping is None:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content={
+                "type": "https://security-buddy.internal/errors/campaign-not-found",
+                "title": "Campaign Not Found",
+                "status": 404,
+                "detail": f"Campaign {campaign_id} not found.",
+                "instance": str(request.url),
+            },
+            media_type="application/problem+json",
+        )
+    campaign_status = str(status_mapping["status"])
+
+    attacks_result = await db.execute(
+        sa.text(
+            "SELECT status::text AS status, COUNT(*)::int AS n"
+            " FROM attacks"
+            " WHERE campaign_id = :id"
+            " GROUP BY status"
+        ),
+        {"id": str(campaign_id)},
+    )
+    attacks_buckets: dict[str, int] = {
+        "pending_execution": 0,
+        "awaiting_judgment": 0,
+        "judged": 0,
+        "total": 0,
+    }
+    for row in attacks_result.mappings():
+        key = str(row["status"])
+        count = int(row["n"])
+        if key in attacks_buckets:
+            attacks_buckets[key] = count
+        attacks_buckets["total"] += count
+
+    verdicts_result = await db.execute(
+        sa.text(
+            "SELECT v.verdict::text AS verdict, COUNT(*)::int AS n"
+            " FROM verdicts v"
+            " JOIN attacks a ON v.attack_id = a.id"
+            " WHERE a.campaign_id = :id"
+            " GROUP BY v.verdict"
+        ),
+        {"id": str(campaign_id)},
+    )
+    verdicts_buckets: dict[str, int] = {
+        "safe": 0,
+        "exploit": 0,
+        "partial": 0,
+        "unclear": 0,
+        "total": 0,
+    }
+    for row in verdicts_result.mappings():
+        key = str(row["verdict"])
+        count = int(row["n"])
+        if key in verdicts_buckets:
+            verdicts_buckets[key] = count
+        verdicts_buckets["total"] += count
+
+    vulns_result = await db.execute(
+        sa.text(
+            "SELECT v.status::text AS status, COUNT(*)::int AS n"
+            " FROM vulnerabilities v"
+            " JOIN attacks a ON v.attack_id = a.id"
+            " WHERE a.campaign_id = :id"
+            " GROUP BY v.status"
+        ),
+        {"id": str(campaign_id)},
+    )
+    vulns_buckets: dict[str, int] = {"total": 0}
+    for row in vulns_result.mappings():
+        key = str(row["status"])
+        count = int(row["n"])
+        vulns_buckets[key] = count
+        vulns_buckets["total"] += count
+
+    return CampaignLiveStatusResponse(
+        campaign_id=campaign_id,
+        status=campaign_status,
+        is_terminal=campaign_status in {s.value for s in _TERMINAL_CAMPAIGN_STATUSES},
+        attacks=attacks_buckets,
+        verdicts=verdicts_buckets,
+        vulnerabilities=vulns_buckets,
+    )

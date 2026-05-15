@@ -6,6 +6,7 @@ import { getSession } from "@/lib/auth/session";
 import { ThemedNav } from "@/components/themed-nav";
 import { DashboardHero } from "@/components/dashboard-hero";
 import { CountUp } from "@/components/count-up";
+import { LiveCampaignStatus } from "@/components/live-campaign-status";
 import {
   coverageSnapshot,
   dashboardSummary,
@@ -54,10 +55,14 @@ export default async function DashboardPage() {
   if (session === null) redirect("/login");
 
   let hasActive = false;
+  let activeCampaignId: string | null = null;
   try {
-    hasActive = (await getActiveCampaign()) !== null;
+    const active = await getActiveCampaign();
+    activeCampaignId = active?.id ?? null;
+    hasActive = active !== null;
   } catch {
     hasActive = false;
+    activeCampaignId = null;
   }
 
   return (
@@ -87,6 +92,9 @@ export default async function DashboardPage() {
       <DashboardHero />
 
       <Suspense fallback={<DashboardSkeleton />}>
+        <div style={{ padding: "0 2rem", maxWidth: 1400, margin: "0 auto" }}>
+          <LiveCampaignStatus campaignId={activeCampaignId} />
+        </div>
         <DashboardContent />
       </Suspense>
     </main>
