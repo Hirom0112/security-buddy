@@ -49,3 +49,28 @@ class MutationStrategy(Protocol):
             - Include 'transform' key in attack_metadata.
         """
         ...
+
+
+@runtime_checkable
+class AsyncMutationStrategy(Protocol):
+    """Async mutation strategy — same contract as MutationStrategy, but I/O bound.
+
+    For strategies whose body performs network I/O (e.g. an LLM call) and so
+    cannot be implemented as a pure sync function. The executor dispatches on
+    isinstance(strategy, AsyncMutationStrategy) and awaits amutate() instead
+    of calling mutate().
+
+    A concrete strategy satisfies exactly one of MutationStrategy or
+    AsyncMutationStrategy — never both. Determinism semantics still apply
+    insofar as the rng_seed is propagated (e.g. passed as a variation hint
+    into a prompt), but exact reproducibility is not guaranteed when the
+    underlying model is non-deterministic.
+    """
+
+    name: MutationStrategyName
+
+    async def amutate(
+        self, seed: SeedAttack, count: int, rng_seed: int
+    ) -> list[Variant]:
+        """Async analogue of MutationStrategy.mutate. See that docstring."""
+        ...

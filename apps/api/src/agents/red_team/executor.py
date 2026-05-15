@@ -29,6 +29,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker  # noqa: TC002
 
+from src.agents.red_team.mutations.base import AsyncMutationStrategy
 from src.agents.red_team.mutations.registry import get_strategy
 from src.agents.red_team.rate_limit import CampaignAttackCapReached, RateLimiter
 from src.agents.red_team.seed_loader import load_seeds_for_subcategory
@@ -36,6 +37,7 @@ from src.agents.red_team.target_client import TargetClient, TargetUnavailableErr
 from src.agents.red_team.types import MutationStrategyName, SeedAttack, Variant  # noqa: TC001
 from src.domain.attack import AttackStatus
 from src.domain.campaign import BriefStatus, CampaignStatus
+from src.llm_client.client import LLMClient  # noqa: TC001
 from src.observability.events import log_event
 from src.repositories.attacks import AttackRepository
 from src.repositories.campaigns import CampaignRepository
@@ -50,7 +52,19 @@ from src.settings import Settings  # noqa: TC001
 JudgeEnqueuer = Callable[[UUID, str], Awaitable[None]]
 
 # Ordered rotation of mutation strategies applied round-robin across variants.
-_STRATEGY_ROTATION: list[MutationStrategyName] = ["lexical", "structural", "multi_turn"]
+# The "llm" slot is only used when an LLMClient is wired into run_executor;
+# otherwise the rotation collapses to the three deterministic strategies.
+_STRATEGY_ROTATION_FULL: list[MutationStrategyName] = [
+    "lexical",
+    "structural",
+    "multi_turn",
+    "llm",
+]
+_STRATEGY_ROTATION_DETERMINISTIC: list[MutationStrategyName] = [
+    "lexical",
+    "structural",
+    "multi_turn",
+]
 
 # Patient IDs used for synthetic test data (never real PHI — CLAUDE.md §3).
 _SYNTHETIC_PATIENT_IDS: list[str] = ["pt-001", "pt-007", "pt-018", "pt-027"]
@@ -75,6 +89,7 @@ async def run_executor(
     rate_limiter: RateLimiter,
     judge_enqueuer: JudgeEnqueuer | None = None,
     request_id: str | None = None,
+    llm_client: LLMClient | None = None,
 ) -> dict[str, object]:
     """Execute the Red Team loop for a single campaign brief.
 
@@ -182,11 +197,19 @@ async def run_executor(
     # ------------------------------------------------------------------
     variant_count: int = brief.variant_count
 
+    # Use the LLM-inclusive rotation only when an LLMClient is wired in;
+    # otherwise fall back to the deterministic-only rotation so legacy
+    # call sites (e.g. the LangGraph node) keep working unchanged.
+    rotation = (
+        _STRATEGY_ROTATION_FULL if llm_client is not None
+        else _STRATEGY_ROTATION_DETERMINISTIC
+    )
+
     def _pick_seed(variant_idx: int) -> SeedAttack:
         return seeds[variant_idx % len(seeds)]
 
     def _pick_strategy(variant_idx: int) -> MutationStrategyName:
-        return _STRATEGY_ROTATION[variant_idx % len(_STRATEGY_ROTATION)]
+        return rotation[variant_idx % len(rotation)]
 
     # ------------------------------------------------------------------
     # Step 4: Execute variants against the target.
@@ -222,12 +245,22 @@ async def run_executor(
 
             seed = _pick_seed(variant_idx)
             strategy_name = _pick_strategy(variant_idx)
-            strategy = get_strategy(strategy_name)
+            strategy = get_strategy(
+                strategy_name,
+                llm_client=llm_client,
+                campaign_id=campaign.id,
+            )
 
-            # Generate one variant deterministically.
-            # rng_seed combines brief_id bytes + variant_idx for reproducibility.
+            # Generate one variant. rng_seed combines brief_id bytes + variant_idx.
+            # Deterministic strategies are exactly reproducible; the LLM strategy
+            # forwards rng_seed as a variation hint (not a hard determinism gate).
             rng_seed = int.from_bytes(brief_id.bytes[:4], "big") ^ variant_idx
-            variants: list[Variant] = strategy.mutate(seed, count=1, rng_seed=rng_seed)
+            if isinstance(strategy, AsyncMutationStrategy):
+                variants: list[Variant] = await strategy.amutate(
+                    seed, count=1, rng_seed=rng_seed
+                )
+            else:
+                variants = strategy.mutate(seed, count=1, rng_seed=rng_seed)
             if not variants:
                 log_event(
                     "red_team_variant_skipped",

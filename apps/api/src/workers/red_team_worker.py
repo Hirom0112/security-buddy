@@ -78,6 +78,7 @@ async def execute_red_team(ctx: dict[str, Any], brief_id: str, request_id: str) 
 
     session_factory: async_sessionmaker[AsyncSession] = ctx["session_factory"]
     rate_limiter: RateLimiter = ctx["rate_limiter"]
+    llm_client: LLMClient = ctx["llm_client"]
     settings = get_settings()
 
     # Per-attack Judge enqueue (TODO #59): pass a callable into the executor
@@ -94,6 +95,7 @@ async def execute_red_team(ctx: dict[str, Any], brief_id: str, request_id: str) 
         rate_limiter=rate_limiter,
         judge_enqueuer=enqueue_judge_evaluate,
         request_id=request_id,
+        llm_client=llm_client,
     )
 
     awaiting_ids = result.get("awaiting_judgment_attack_ids") or []

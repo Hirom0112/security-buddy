@@ -58,7 +58,7 @@ class SeedAttack(BaseModel):
     """Free-form tags for coverage queries, e.g. ['cross-patient', 'rag']."""
 
 
-MutationStrategyName = Literal["lexical", "structural", "multi_turn"]
+MutationStrategyName = Literal["lexical", "structural", "multi_turn", "llm"]
 
 
 class Variant(BaseModel):
