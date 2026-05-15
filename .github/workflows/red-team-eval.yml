@@ -1,0 +1,55 @@
+name: Red Team eval (mutation quality)
+
+# Manual trigger only — costs money, needs a live Llama 3.3 70B endpoint.
+# CLAUDE.md §1 + §6: LLM evals do not run per-commit. Mirrors
+# judge-eval.yml + documentation-eval.yml.
+on:
+  workflow_dispatch:
+    inputs:
+      threshold:
+        description: "Minimum required average pass rate (default 0.60)"
+        required: false
+        default: "0.60"
+
+concurrency:
+  group: red-team-eval-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  eval:
+    name: Run Red Team mutation eval
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: latest
+
+      - name: Sync dependencies
+        run: uv sync --frozen
+
+      - name: Run eval
+        env:
+          # Placeholders satisfy Settings.model_validate; the eval reads
+          # OPENROUTER + LANGSMITH only and never opens DB/Redis.
+          DATABASE_URL: postgresql+asyncpg://placeholder/placeholder
+          REDIS_URL: redis://placeholder:6379
+          SESSION_SECRET: placeholder-session-secret-placeholder-placeholder
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY || 'DISABLED' }}
+          LANGSMITH_PROJECT: security-buddy
+          RED_TEAM_EVAL_THRESHOLD: ${{ github.event.inputs.threshold }}
+        run: uv run python tests/evals/run_red_team_eval.py
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: red-team-eval-results
+          path: apps/api/tests/evals/results/*.json
+          if-no-files-found: warn
+          retention-days: 90

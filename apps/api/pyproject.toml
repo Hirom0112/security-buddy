@@ -76,6 +76,7 @@ ignore = [
 # scope-narrow to this script.
 "tests/evals/run_judge_eval.py" = ["E501", "S603", "S607"]
 "tests/evals/run_documentation_eval.py" = ["E501", "S603", "S607"]
+"tests/evals/run_red_team_eval.py" = ["E501", "S603", "S607"]
 
 [tool.mypy]
 python_version = "3.12"
