@@ -17,6 +17,7 @@ class PatchStatus(StrEnum):
     MERGED = "merged"
     REJECTED = "rejected"
     CI_FAILED = "ci_failed"
+    BLOCKS_LEGIT_FEATURES = "blocks_legit_features"
 
 
 class Patch(BaseModel):

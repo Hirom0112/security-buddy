@@ -47,6 +47,7 @@ const VULN_STATUS: Record<VulnerabilityStatus, string> = {
   patched: TONE.green,
   regressed: TONE.danger,
   unstable: TONE.pink,
+  over_fit: TONE.warn,
 };
 
 export function VulnStatusBadge({ status }: { status: VulnerabilityStatus }) {
@@ -62,6 +63,7 @@ const PATCH_STATUS: Record<PatchStatus, string> = {
   merged: TONE.green,
   rejected: TONE.muted,
   ci_failed: TONE.danger,
+  blocks_legit_features: TONE.warn,
 };
 
 export function PatchStatusBadge({ status }: { status: PatchStatus }) {

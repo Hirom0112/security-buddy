@@ -256,6 +256,8 @@ export async function getLatestRegressionRun(
   vulnerabilityId: string
 ): Promise<RegressionRun | null> {
   const sql = getSql();
+  // Filter to exploit_replay rows so the Before/After security panel doesn't
+  // accidentally render a happy-path row (those have a separate UI panel).
   const rows = await sql<RegressionRun[]>`
     SELECT
       id::text,
@@ -266,9 +268,42 @@ export async function getLatestRegressionRun(
       outcome,
       triggered_by,
       started_at,
-      completed_at
+      completed_at,
+      kind
     FROM regression_runs
     WHERE vulnerability_id = ${vulnerabilityId}::uuid
+      AND kind = 'exploit_replay'
+    ORDER BY started_at DESC
+    LIMIT 1
+  `;
+  return rows[0] ?? null;
+}
+
+/**
+ * Most recent kind='happy_path' regression_runs row for the vulnerability,
+ * if any. Written by harness/runner._flip_over_fit when an over-fit patch
+ * is detected — surfaces "patch fixed security but broke legitimate
+ * features" on the diff page.
+ */
+export async function getLatestHappyPathRun(
+  vulnerabilityId: string
+): Promise<RegressionRun | null> {
+  const sql = getSql();
+  const rows = await sql<RegressionRun[]>`
+    SELECT
+      id::text,
+      vulnerability_id::text,
+      target_version_id::text,
+      replay_count,
+      verdicts,
+      outcome,
+      triggered_by,
+      started_at,
+      completed_at,
+      kind
+    FROM regression_runs
+    WHERE vulnerability_id = ${vulnerabilityId}::uuid
+      AND kind = 'happy_path'
     ORDER BY started_at DESC
     LIMIT 1
   `;

@@ -211,3 +211,120 @@ def test_confirm_still_works(
     assert resp.status_code == 200, resp.text
     assert resp.json()["status"] == "open"
     mock_enqueue.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/vulnerabilities/{id}/rerun
+# ---------------------------------------------------------------------------
+
+
+def _fake_regression_run(
+    *,
+    triggered_by: str,
+    started_age_seconds: float,
+) -> Any:
+    """Build a regression_runs row stub with a tunable started_at age."""
+    from src.domain.regression_run import RegressionOutcome, RegressionRun
+
+    return RegressionRun(
+        id=uuid4(),
+        vulnerability_id=_VULN_ID,
+        target_version_id=uuid4(),
+        replay_count=1,
+        verdicts=[],
+        outcome=RegressionOutcome.UNSTABLE,
+        triggered_by=triggered_by,
+        started_at=datetime.now(UTC).fromtimestamp(
+            datetime.now(UTC).timestamp() - started_age_seconds, tz=UTC
+        ),
+        completed_at=datetime.now(UTC),
+        offending_commit_hash=None,
+    )
+
+
+@patch("src.routes.vulnerabilities.RegressionRunRepository")
+@patch("src.routes.vulnerabilities.VulnerabilityRepository")
+def test_rerun_404_when_vuln_missing(
+    mock_vuln_cls: MagicMock,
+    mock_run_cls: MagicMock,
+    client: TestClient,
+) -> None:
+    repo = mock_vuln_cls.return_value
+    repo.get_by_id = AsyncMock(return_value=None)
+
+    resp = client.post(f"/api/v1/vulnerabilities/{_VULN_ID}/rerun")
+    assert resp.status_code == 404, resp.text
+
+
+@patch("src.routes.vulnerabilities.RegressionRunRepository")
+@patch("src.routes.vulnerabilities.VulnerabilityRepository")
+def test_rerun_409_when_draft(
+    mock_vuln_cls: MagicMock,
+    mock_run_cls: MagicMock,
+    client: TestClient,
+) -> None:
+    repo = mock_vuln_cls.return_value
+    repo.get_by_id = AsyncMock(return_value=_fake_vuln(status=VulnerabilityStatus.DRAFT))
+
+    resp = client.post(f"/api/v1/vulnerabilities/{_VULN_ID}/rerun")
+    assert resp.status_code == 409, resp.text
+    assert "draft" in resp.json()["detail"]
+
+
+@patch(
+    "src.routes.vulnerabilities.enqueue_rerun_single_vulnerability",
+    new_callable=AsyncMock,
+)
+@patch("src.routes.vulnerabilities.RegressionRunRepository")
+@patch("src.routes.vulnerabilities.VulnerabilityRepository")
+def test_rerun_409_when_in_flight(
+    mock_vuln_cls: MagicMock,
+    mock_run_cls: MagicMock,
+    mock_enqueue: AsyncMock,
+    client: TestClient,
+) -> None:
+    repo = mock_vuln_cls.return_value
+    repo.get_by_id = AsyncMock(return_value=_fake_vuln(status=VulnerabilityStatus.PATCHED))
+    run_repo = mock_run_cls.return_value
+    # Recent operator_rerun row, 5s old — well within the 60s window.
+    run_repo.list_for_vulnerability = AsyncMock(
+        return_value=[
+            _fake_regression_run(
+                triggered_by=f"operator_rerun:{_VULN_ID}",
+                started_age_seconds=5.0,
+            )
+        ]
+    )
+
+    resp = client.post(f"/api/v1/vulnerabilities/{_VULN_ID}/rerun")
+    assert resp.status_code == 409, resp.text
+    mock_enqueue.assert_not_called()
+
+
+@patch(
+    "src.routes.vulnerabilities.enqueue_rerun_single_vulnerability",
+    new_callable=AsyncMock,
+)
+@patch("src.routes.vulnerabilities.RegressionRunRepository")
+@patch("src.routes.vulnerabilities.VulnerabilityRepository")
+def test_rerun_happy_path_enqueues_job(
+    mock_vuln_cls: MagicMock,
+    mock_run_cls: MagicMock,
+    mock_enqueue: AsyncMock,
+    client: TestClient,
+) -> None:
+    repo = mock_vuln_cls.return_value
+    repo.get_by_id = AsyncMock(return_value=_fake_vuln(status=VulnerabilityStatus.PATCHED))
+    run_repo = mock_run_cls.return_value
+    run_repo.list_for_vulnerability = AsyncMock(return_value=[])
+    mock_enqueue.return_value = f"rerun:{_VULN_ID}:9999"
+
+    resp = client.post(f"/api/v1/vulnerabilities/{_VULN_ID}/rerun?replays=3")
+    assert resp.status_code == 202, resp.text
+    body = resp.json()
+    assert body["vulnerability_id"] == str(_VULN_ID)
+    assert body["job_id"].startswith(f"rerun:{_VULN_ID}:")
+    mock_enqueue.assert_called_once()
+    call_kwargs = mock_enqueue.call_args.kwargs
+    assert call_kwargs["replays"] == 3
+    assert "bucket_epoch_seconds" in call_kwargs

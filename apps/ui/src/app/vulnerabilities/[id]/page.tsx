@@ -5,12 +5,14 @@ import { SeverityBadge, VulnStatusBadge } from "@/components/badges";
 import Link from "next/link";
 import {
   countRegressionRunsForVulnerability,
+  getLatestRegressionRun,
   getVulnerability,
   listPatchesForVulnerability,
 } from "@/lib/db/queries";
 import styles from "@/app/dashboard.module.css";
 import { confirmVulnerability } from "./actions";
 import { DismissForm } from "./dismiss-form";
+import { RerunButton } from "./rerun-button";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +30,7 @@ export default async function VulnerabilityDetailPage({ params }: PageProps) {
 
   const patches = await listPatchesForVulnerability(id);
   const regressionCount = await countRegressionRunsForVulnerability(id);
+  const latestRegression = await getLatestRegressionRun(id);
 
   return (
     <ThemedShell
@@ -68,6 +71,25 @@ export default async function VulnerabilityDetailPage({ params }: PageProps) {
                 <span className={styles.kvValue}>{vuln.hipaa_safeguard}</span>
               </div>
             </div>
+          </div>
+        </div>
+
+        <div className={`${styles.panel} ${styles.panelTight}`}>
+          <div className={styles.panelHeader}>
+            <div className={styles.panelHeaderLeft}>
+              <div className={styles.panelTitle}>Live re-run</div>
+              <div className={styles.panelSubtitle}>
+                Fire the original attack at the current target deployment.
+                Result lands in regression_runs and may flip status.
+              </div>
+            </div>
+          </div>
+          <div className={styles.panelBody}>
+            <RerunButton
+              vulnerabilityId={vuln.id}
+              status={vuln.status}
+              baselineRegressionRunId={latestRegression?.id ?? null}
+            />
           </div>
         </div>
 

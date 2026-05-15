@@ -35,3 +35,4 @@ class RegressionRun(BaseModel):
     started_at: datetime
     completed_at: datetime | None
     offending_commit_hash: str | None = None
+    kind: str = "exploit_replay"

@@ -113,6 +113,40 @@ async def enqueue_harness_regression_sweep(
         await redis.close()
 
 
+async def enqueue_rerun_single_vulnerability(
+    vulnerability_id: UUID,
+    request_id: str,
+    *,
+    replays: int = 1,
+    bucket_epoch_seconds: int,
+) -> str:
+    """Push a harness.rerun_single_vulnerability job onto the arq Redis queue.
+
+    Idempotency: `_job_id = f"rerun:{vulnerability_id}:{bucket_epoch_seconds}"`
+    where the bucket is `int(time.time()) // 60` (a one-minute window). Two
+    operator clicks on the "Re-run this attack" button within the same window
+    collapse to a single arq job.
+
+    Returns the chosen arq job_id so the route can echo it back to the UI
+    (useful for polling diagnostics).
+    """
+    job_id = f"rerun:{vulnerability_id}:{bucket_epoch_seconds}"
+    settings = get_settings()
+    redis = await create_pool(RedisSettings.from_dsn(settings.redis_url))
+    try:
+        await redis.enqueue_job(
+            "rerun_single_vulnerability",
+            str(vulnerability_id),
+            f"operator_rerun:{vulnerability_id}",
+            request_id,
+            replays,
+            _job_id=job_id,
+        )
+    finally:
+        await redis.close()
+    return job_id
+
+
 async def enqueue_patch_propose(vulnerability_id: UUID, request_id: str) -> None:
     """Push a patch.propose job onto the arq Redis queue.
 

@@ -12,16 +12,30 @@ import {
   VulnStatusBadge,
 } from "@/components/badges";
 import {
+  getLatestHappyPathRun,
   getLatestRegressionRun,
   getOriginalAttackForVulnerability,
   getVulnerability,
 } from "@/lib/db/queries";
 import styles from "@/app/dashboard.module.css";
 import type {
+  HappyPathReplay,
   RegressionOutcome,
   RegressionReplay,
+  RegressionRun,
   VerdictLabel,
 } from "@/types";
+
+// Banner status code — derived from (exploit-outcome, happy-path-outcome,
+// vuln-status). OVER_FIT is a fourth state distinct from REGRESSED /
+// RESOLVED / UNSTABLE: the security fix held but the patch broke a legit
+// capability.
+type BannerCode =
+  | "fix_verified"
+  | "regressed"
+  | "unstable"
+  | "target_unavailable"
+  | "over_fit";
 
 export const dynamic = "force-dynamic";
 
@@ -40,7 +54,7 @@ function truncate(s: string | null, max: number): string {
 }
 
 const OUTCOME_META: Record<
-  RegressionOutcome,
+  BannerCode,
   { label: string; accent: string; color: string }
 > = {
   fix_verified: {
@@ -49,7 +63,7 @@ const OUTCOME_META: Record<
     color: "var(--sb-ok)",
   },
   regressed: {
-    label: "REGRESSED",
+    label: "SECURITY REGRESSED",
     accent: "var(--sb-danger)",
     color: "var(--sb-danger)",
   },
@@ -63,7 +77,22 @@ const OUTCOME_META: Record<
     accent: "var(--sb-muted)",
     color: "var(--sb-muted)",
   },
+  over_fit: {
+    label: "OVER_FIT — PATCH BROKE LEGIT FEATURE",
+    accent: "var(--sb-warn)",
+    color: "var(--sb-warn)",
+  },
 };
+
+function pickBanner(
+  exploitOutcome: RegressionOutcome,
+  happyPathFailed: boolean
+): BannerCode {
+  // Over-fit takes precedence — a patch that resolved the exploit but
+  // broke a legitimate capability is the most actionable signal.
+  if (happyPathFailed) return "over_fit";
+  return exploitOutcome;
+}
 
 function tallyReplays(
   verdicts: RegressionReplay[]
@@ -86,10 +115,19 @@ export default async function VulnerabilityDiffPage({ params }: PageProps) {
   const vuln = await getVulnerability(id);
   if (vuln === null) notFound();
 
-  const [latest, original] = await Promise.all([
+  const [latest, original, happyPath] = await Promise.all([
     getLatestRegressionRun(id),
     getOriginalAttackForVulnerability(id),
+    getLatestHappyPathRun(id),
   ]);
+
+  const happyPathFailed =
+    happyPath !== null &&
+    happyPath.verdicts.some(
+      (v) => (v as unknown as HappyPathReplay).verdict === "happy_path_fail"
+    );
+  const banner: BannerCode | null =
+    latest === null ? null : pickBanner(latest.outcome, happyPathFailed);
 
   return (
     <ThemedShell
@@ -124,7 +162,7 @@ export default async function VulnerabilityDiffPage({ params }: PageProps) {
         </div>
       ) : (
         <>
-          <StatusBanner outcome={latest.outcome} />
+          <StatusBanner code={banner ?? latest.outcome} />
           <div className={styles.diffGrid} style={{ marginTop: 20 }}>
             <BeforePanel
               vulnTitle={vuln.title}
@@ -134,14 +172,17 @@ export default async function VulnerabilityDiffPage({ params }: PageProps) {
             />
             <AfterPanel run={latest} />
           </div>
+          {happyPath !== null && (
+            <HappyPathPanel run={happyPath} />
+          )}
         </>
       )}
     </ThemedShell>
   );
 }
 
-function StatusBanner({ outcome }: { outcome: RegressionOutcome }) {
-  const meta = OUTCOME_META[outcome];
+function StatusBanner({ code }: { code: BannerCode }) {
+  const meta = OUTCOME_META[code];
   return (
     <div
       className={styles.alertCallout}
@@ -161,15 +202,90 @@ function StatusBanner({ outcome }: { outcome: RegressionOutcome }) {
         </span>
       </div>
       <p className={styles.alertCalloutBody}>
-        {outcome === "fix_verified" &&
+        {code === "fix_verified" &&
           "Latest regression sweep confirms the exploit no longer reproduces. The patch held."}
-        {outcome === "regressed" &&
+        {code === "regressed" &&
           "Latest regression sweep reproduced the original exploit. The patch did not hold."}
-        {outcome === "unstable" &&
+        {code === "unstable" &&
           "Latest regression sweep produced mixed verdicts across replays. The fix is not consistently effective."}
-        {outcome === "target_unavailable" &&
+        {code === "target_unavailable" &&
           "Target was unreachable during the regression sweep — no verdict could be reached."}
+        {code === "over_fit" &&
+          "Security boundary held, but the patch broke at least one legitimate clinician capability. See the happy-path panel below."}
       </p>
+    </div>
+  );
+}
+
+function HappyPathPanel({ run }: { run: RegressionRun }) {
+  // The harness stores per-fixture rows inside the verdicts JSONB column
+  // when kind='happy_path'. Cast through unknown — the column union is
+  // intentionally wider than HappyPathReplay so the existing
+  // RegressionReplay path stays valid.
+  const fixtures = run.verdicts as unknown as HappyPathReplay[];
+  const failed = fixtures.filter((f) => f.verdict === "happy_path_fail");
+  const passed = fixtures.filter((f) => f.verdict === "happy_path_pass");
+  return (
+    <div className={styles.panel} style={{ marginTop: 20 }}>
+      <div className={styles.panelHeader}>
+        <div className={styles.panelHeaderLeft}>
+          <div className={styles.panelTitle}>
+            Happy-path replay results
+          </div>
+        </div>
+      </div>
+      <div className={styles.panelBody}>
+        <div className={styles.diffAggregate}>
+          <span>
+            <strong>{fixtures.length}</strong> fixtures
+          </span>
+          <span>
+            · <strong>{passed.length}</strong> pass
+          </span>
+          <span>
+            · <strong>{failed.length}</strong> fail
+          </span>
+        </div>
+        <div className={styles.diffPanelMetaRow}>
+          <span className={styles.dataMuted}>
+            run {new Date(run.started_at).toLocaleString()}
+          </span>
+          <span className={styles.dataMuted}>
+            · triggered by {run.triggered_by}
+          </span>
+        </div>
+        {fixtures.length === 0 ? (
+          <div className={styles.panelEmpty}>
+            No happy-path fixtures were evaluated.
+          </div>
+        ) : (
+          <ul className={styles.replayList}>
+            {fixtures.map((f, i) => (
+              <li key={i} className={styles.replayItem}>
+                <div className={styles.replayHead}>
+                  <span className={styles.replayIndex}>
+                    {f.capability_name}
+                  </span>
+                  <span
+                    style={{
+                      color:
+                        f.verdict === "happy_path_pass"
+                          ? "var(--sb-ok)"
+                          : "var(--sb-danger)",
+                    }}
+                  >
+                    {f.verdict === "happy_path_pass" ? "PASS" : "FAIL"}
+                  </span>
+                  {f.target_status_code !== null && (
+                    <span>HTTP {f.target_status_code}</span>
+                  )}
+                </div>
+                <pre className={styles.replayEvidence}>{f.evidence}</pre>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }
