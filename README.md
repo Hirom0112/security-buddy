@@ -118,9 +118,12 @@ produced:
 | Vulnerability reports drafted by Documentation Agent | 13 (all critical, all `status='draft'`) |
 | `agent_traces` rows (cost telemetry) | 44 |
 
-All 13 critical findings are correctly held in `status='draft'` — the
-soft-gate per [`docs/USERS.md`](docs/USERS.md). They require operator
-confirmation before the Patch Agent enqueues PRs against the target fork.
+12 critical findings remain in `status='draft'` — the soft-gate per
+[`docs/USERS.md`](docs/USERS.md) pending operator confirmation. VUL-0008
+(multi-patient handoff PHI leak) was confirmed on 2026-05-14: Patch Agent
+opened PR #2 on `Hirom0112/openemr` (branch `security-buddy/vul-0008`,
++480/−2,973 lines, new `PatientAccessControlService.php`), operator reviewed
+and merged, status now `proposed_fix`. Regression sweep pending.
 
 Eval baselines (recorded in [`docs/EVAL_BASELINES.md`](docs/EVAL_BASELINES.md)):
 
@@ -277,7 +280,7 @@ Tracked in [`docs/PLAN.md`](docs/PLAN.md). Each slice is vertical
 - [x] **Slice 3** — Orchestrator with priority function and budget enforcement
 - [x] **Slice 4** — Documentation Agent with framework citations
 - [x] **Slice 5** — Patch Agent + GitHub integration + branch protection
-- [x] **Slice 6** — Regression Harness (replay-N, frozen rubrics, cross-category)
+- [~] **Slice 6** — Regression Harness (replay-N, frozen rubrics, cross-category) *(webhook → proposed_fix working; regression sweep for VUL-0008 pending)*
 - [x] **Slice 7** — Security Buddy UI: dashboard, before/after diff, PR queue
 - [ ] **Slice 8** — Cost analysis, observability dashboards, demo video
 

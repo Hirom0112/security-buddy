@@ -97,8 +97,18 @@ work currently runs through the Orchestrator on Sonnet. See §5.
 
 ### Patch Agent
 
-Not exercised in campaign 60662d6c. Future cost will be dominated by repo
-context windows and the diff-generation pass.
+First live run: 2026-05-14, VUL-0008 (multi-patient handoff PHI leak).
+
+| Calls | Tokens in | Tokens out | Cost USD |
+|------:|----------:|-----------:|---------:|
+| 6     | 6,030     | 8,824      | $0.1505  |
+
+6 calls = 3 code-search passes + 3 draft attempts (2 timed out at 60 s before
+timeout was raised to 180 s; 1 succeeded). The successful draft generated
++480/−2,973 lines across 4 PHP files. Cost is dominated by tokens-out (the
+full unified diff). Cost per successful patch: **$0.1505** at this draft size;
+future runs will be cheaper as `PATCH_MAX_CANDIDATE_FILES=5` is the main lever
+(fewer files → shorter diff → fewer output tokens).
 
 ---
 
