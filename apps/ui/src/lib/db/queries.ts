@@ -416,7 +416,8 @@ export async function listPatches(limit = 100): Promise<Patch[]> {
       p.pr_url,
       p.status,
       p.created_at,
-      p.merged_at
+      p.merged_at,
+      p.attempt_number
     FROM patches p
     LEFT JOIN vulnerabilities v ON v.id = p.vulnerability_id
     ORDER BY
@@ -425,6 +426,8 @@ export async function listPatches(limit = 100): Promise<Patch[]> {
         WHEN 'merged'                THEN 1
         WHEN 'ci_failed'             THEN 2
         WHEN 'rejected'              THEN 3
+        WHEN 'superseded'            THEN 4
+        WHEN 'blocks_legit_features' THEN 5
       END,
       p.created_at DESC
     LIMIT ${limit}
@@ -444,7 +447,8 @@ export async function listPatchesForVulnerability(
       p.pr_url,
       p.status,
       p.created_at,
-      p.merged_at
+      p.merged_at,
+      p.attempt_number
     FROM patches p
     LEFT JOIN vulnerabilities v ON v.id = p.vulnerability_id
     WHERE p.vulnerability_id = ${vulnerabilityId}::uuid

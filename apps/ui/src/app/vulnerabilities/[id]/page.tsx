@@ -32,6 +32,39 @@ export default async function VulnerabilityDetailPage({ params }: PageProps) {
   const regressionCount = await countRegressionRunsForVulnerability(id);
   const latestRegression = await getLatestRegressionRun(id);
 
+  // Auto-retry banner inputs: detect whether the vuln has a SUPERSEDED
+  // attempt #1 + an active attempt #2, or whether the cap is exhausted.
+  // The DB query orders by created_at DESC so patches[0] is the newest.
+  const supersededAttempt1 = patches.find(
+    (p) => p.status === "superseded" && p.attempt_number === 1,
+  );
+  const attempt2 = patches.find((p) => p.attempt_number === 2);
+  const attempt2IsActive =
+    attempt2 !== undefined &&
+    (attempt2.status === "awaiting_human_review" ||
+      attempt2.status === "merged");
+  const retryBanner: { tone: "info" | "alarm"; text: string } | null = (() => {
+    if (vuln.status === "unstable" || vuln.status === "regressed") {
+      if (attempt2 !== undefined && !attempt2IsActive) {
+        // Attempt #2 already landed and we're still in an unstable state.
+        return {
+          tone: "alarm",
+          text: "Attempts exhausted — review required.",
+        };
+      }
+    }
+    if (supersededAttempt1 !== undefined && attempt2IsActive) {
+      const isMerged = attempt2.status === "merged";
+      return {
+        tone: "info",
+        text: isMerged
+          ? `Attempt 2 of 2 — landed as ${attempt2.branch_name}.`
+          : "Attempt 1 of 2 — unstable. Auto-retry in progress.",
+      };
+    }
+    return null;
+  })();
+
   return (
     <ThemedShell
       eyebrow={`// ${vuln.vuln_id}`}
@@ -179,6 +212,41 @@ export default async function VulnerabilityDetailPage({ params }: PageProps) {
           body={vuln.recommended_remediation}
         />
 
+        {retryBanner !== null && (
+          <div
+            className={styles.alertCallout}
+            style={
+              retryBanner.tone === "alarm"
+                ? ({ ["--accent" as string]: "var(--sb-danger)" } as React.CSSProperties)
+                : undefined
+            }
+          >
+            <div className={styles.alertCalloutHeader}>
+              <span
+                className={styles.pulseDot}
+                style={{
+                  ["--accent" as string]:
+                    retryBanner.tone === "alarm"
+                      ? "var(--sb-danger)"
+                      : "var(--sb-warn)",
+                }}
+                aria-hidden="true"
+              />
+              <span
+                className={styles.alertCalloutTitle}
+                style={
+                  retryBanner.tone === "alarm"
+                    ? { color: "var(--sb-danger)" }
+                    : undefined
+                }
+              >
+                Patch auto-retry
+              </span>
+            </div>
+            <p className={styles.alertCalloutBody}>{retryBanner.text}</p>
+          </div>
+        )}
+
         <div className={styles.panel}>
           <div className={styles.panelHeader}>
             <div className={styles.panelHeaderLeft}>
@@ -216,6 +284,7 @@ export default async function VulnerabilityDetailPage({ params }: PageProps) {
                           {p.branch_name}
                         </a>
                         <span className={styles.dataMuted}>
+                          attempt {p.attempt_number} ·{" "}
                           {p.status.replace(/_/g, " ")}
                         </span>
                       </div>

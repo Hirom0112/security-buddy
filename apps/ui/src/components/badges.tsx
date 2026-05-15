@@ -64,6 +64,7 @@ const PATCH_STATUS: Record<PatchStatus, string> = {
   rejected: TONE.muted,
   ci_failed: TONE.danger,
   blocks_legit_features: TONE.warn,
+  superseded: TONE.muted,
 };
 
 export function PatchStatusBadge({ status }: { status: PatchStatus }) {

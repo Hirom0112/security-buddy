@@ -200,7 +200,8 @@ export type PatchStatus =
   | "merged"
   | "rejected"
   | "ci_failed"
-  | "blocks_legit_features";
+  | "blocks_legit_features"
+  | "superseded";
 
 export interface Patch {
   id: string;
@@ -211,6 +212,7 @@ export interface Patch {
   status: PatchStatus;
   created_at: string;
   merged_at: string | null;
+  attempt_number: number;
 }
 
 // ---------------------------------------------------------------------------

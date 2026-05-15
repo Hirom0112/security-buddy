@@ -40,6 +40,7 @@ from src.workers.documentation_worker import write_documentation
 from src.workers.harness_worker import rerun_single_vulnerability, run_regression_sweep
 from src.workers.judge_worker import evaluate_attack
 from src.workers.orchestrator_worker import orchestrator_tick
+from src.workers.patch_retry_worker import retry_unstable_patch
 from src.workers.patch_worker import propose_patch
 from src.workers.queue import enqueue_judge_evaluate
 
@@ -168,6 +169,7 @@ class WorkerSettings:
         orchestrator_tick,
         write_documentation,
         propose_patch,
+        retry_unstable_patch,
         run_regression_sweep,
         rerun_single_vulnerability,
     ]

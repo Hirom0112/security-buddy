@@ -147,6 +147,28 @@ async def enqueue_rerun_single_vulnerability(
     return job_id
 
 
+async def enqueue_patch_retry_unstable(vulnerability_id: UUID, request_id: str) -> None:
+    """Push a patch.retry_unstable job onto the arq Redis queue.
+
+    Auto-retry handoff: the harness worker enqueues this whenever a
+    regression sweep flips a vulnerability to UNSTABLE or REGRESSED while
+    attempt_number<2. _job_id is f"patch_retry:{vulnerability_id}" so
+    duplicate sweeps collapse to a single retry (defence on top of the
+    partial unique index on (vulnerability_id, attempt_number)).
+    """
+    settings = get_settings()
+    redis = await create_pool(RedisSettings.from_dsn(settings.redis_url))
+    try:
+        await redis.enqueue_job(
+            "retry_unstable_patch",
+            str(vulnerability_id),
+            request_id,
+            _job_id=f"patch_retry:{vulnerability_id}",
+        )
+    finally:
+        await redis.close()
+
+
 async def enqueue_patch_propose(vulnerability_id: UUID, request_id: str) -> None:
     """Push a patch.propose job onto the arq Redis queue.
 

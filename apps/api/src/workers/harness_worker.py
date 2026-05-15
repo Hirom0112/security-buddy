@@ -9,17 +9,30 @@ resulting regression_runs rows.
 from __future__ import annotations
 
 from typing import Any
+from uuid import UUID  # noqa: TC003
+
+from sqlalchemy.ext.asyncio import AsyncSession  # noqa: TC002
 
 from src.agents.red_team.rate_limit import RateLimiter  # noqa: TC001
 from src.agents.red_team.target_client import TargetClient
+from src.domain.patch import PatchStatus
+from src.domain.regression_run import RegressionOutcome  # noqa: TC001
 from src.harness.replay import make_live_replay
-from src.harness.runner import run_regressions, run_single_vulnerability
+from src.harness.runner import FlaggedVulnerability, run_regressions, run_single_vulnerability
 from src.llm_client.client import LLMClient  # noqa: TC001
 from src.observability.context import set_request_id
 from src.observability.events import log_event
+from src.repositories.patches import PatchRepository
 from src.repositories.target_manifests import TargetManifestRepository
 from src.repositories.target_versions import TargetVersionRepository
 from src.settings import Settings  # noqa: TC001
+from src.workers.queue import enqueue_patch_retry_unstable
+
+# Hard cap on patch attempts per vulnerability. Attempt #1 = initial,
+# attempt #2 = first (and only) retry. After attempt #2 lands UNSTABLE or
+# REGRESSED the vuln waits for a human — see CLAUDE.md "Auto-retry on
+# unstable regression".
+_MAX_PATCH_ATTEMPTS = 2
 
 # Default replay count per vulnerability. Three samples is the minimum
 # that lets aggregate_replays distinguish "regressed" (majority) from
@@ -93,6 +106,23 @@ async def run_regression_sweep(
                         replay_fn=replay_fn,
                         triggered_by=triggered_by,
                     )
+            except Exception:
+                await session.rollback()
+                raise
+
+            # Auto-retry decision: any vuln flipped to UNSTABLE or REGRESSED
+            # by this sweep may need a 2nd-attempt patch. Same transaction
+            # as the sweep so the SUPERSEDED flip on the prior patch
+            # commits atomically with the regression_runs writes.
+            try:
+                flagged_tuples = [
+                    (f.vulnerability_id, f.outcome) for f in summary.flagged_for_retry
+                ]
+                await process_unstable_retries(
+                    session=session,
+                    flagged=flagged_tuples,
+                    request_id=request_id,
+                )
             except Exception:
                 await session.rollback()
                 raise
@@ -232,3 +262,84 @@ async def rerun_single_vulnerability(
         "prior_status": rerun.prior_status,
         "new_status": rerun.new_status,
     }
+
+
+async def process_unstable_retries(
+    *,
+    session: AsyncSession,
+    flagged: list[tuple[UUID, RegressionOutcome]],
+    request_id: str,
+) -> None:
+    """For each vuln transitioned to UNSTABLE/REGRESSED, decide auto-retry.
+
+    Rules (CLAUDE.md "Auto-retry on unstable regression"):
+      - Look up the vuln's current active patch (status in
+        awaiting_human_review / merged) and read attempt_number.
+      - If attempt_number < 2: enqueue patch.retry_unstable and flip the
+        prior patch to SUPERSEDED in this transaction. The new attempt's
+        status will be inserted by the retry worker.
+      - If attempt_number >= 2: log structured event
+        patch_retry_exhausted with {vulnerability_id, attempt_number,
+        outcome}. The vuln stays in UNSTABLE/REGRESSED and waits for a
+        human.
+
+    This function is intentionally synchronous-feeling (no I/O in the
+    decision path — patch lookup + status flip + enqueue are sequential).
+    It runs inside the harness sweep's transaction so the SUPERSEDED flip
+    on attempt #1 commits atomically with the regression_runs writes.
+    """
+    if not flagged:
+        return
+
+    patch_repo = PatchRepository()
+    for vuln_id, outcome in flagged:
+        prior_patch = await patch_repo.get_by_vulnerability_id(session, vuln_id)
+        if prior_patch is None:
+            # No active patch (status in awaiting_human_review/merged).
+            # This is unusual — the regression sweep targets vulns that
+            # had a fix proposed — but if it happens we skip the retry
+            # rather than crash.
+            log_event(
+                "patch_retry_skip_no_active_patch",
+                vulnerability_id=str(vuln_id),
+                outcome=outcome.value,
+            )
+            continue
+
+        if prior_patch.attempt_number >= _MAX_PATCH_ATTEMPTS:
+            # Cap reached. The vuln needs a human.
+            log_event(
+                "patch_retry_exhausted",
+                vulnerability_id=str(vuln_id),
+                attempt_number=prior_patch.attempt_number,
+                outcome=outcome.value,
+            )
+            continue
+
+        # Flip the prior patch to SUPERSEDED inside this transaction. The
+        # retry worker re-asserts this defensively too (idempotent).
+        await patch_repo.update_status(
+            session,
+            patch_id=prior_patch.id,
+            new_status=PatchStatus.SUPERSEDED,
+        )
+
+        await enqueue_patch_retry_unstable(vuln_id, request_id)
+
+        log_event(
+            "patch_retry_enqueued",
+            vulnerability_id=str(vuln_id),
+            prior_patch_id=str(prior_patch.id),
+            attempt_number=prior_patch.attempt_number,
+            outcome=outcome.value,
+        )
+
+
+# Keep a reference to FlaggedVulnerability so external callers (tests,
+# documentation) can import it from a single place.
+__all__ = [
+    "FlaggedVulnerability",
+    "process_unstable_retries",
+    "rerun_single_vulnerability",
+    "run_regression_sweep",
+]

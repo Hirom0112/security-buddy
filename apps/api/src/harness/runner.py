@@ -139,6 +139,19 @@ class SingleRerunResult:
 
 
 @dataclass(frozen=True)
+class FlaggedVulnerability:
+    """A vulnerability whose regression run transitioned it to an unstable state.
+
+    Surfaced from run_regressions so harness_worker can decide whether to
+    enqueue a patch retry. Carries the post-sweep regression outcome — the
+    auto-retry decision treats UNSTABLE and REGRESSED identically.
+    """
+
+    vulnerability_id: UUID
+    outcome: RegressionOutcome
+
+
+@dataclass(frozen=True)
 class RegressionSummary:
     """Returned by run_regressions — what the worker reports back."""
 
@@ -152,6 +165,7 @@ class RegressionSummary:
     happy_path_passed: int = 0
     happy_path_failed: int = 0
     over_fit_patch_count: int = 0
+    flagged_for_retry: tuple[FlaggedVulnerability, ...] = ()
 
 
 async def run_regressions(
@@ -185,6 +199,7 @@ async def run_regressions(
         RegressionOutcome.UNSTABLE: 0,
         RegressionOutcome.TARGET_UNAVAILABLE: 0,
     }
+    flagged: list[FlaggedVulnerability] = []
 
     for vuln in targets:
         # 1. Locate the source attack via verdict_id → attack_id
@@ -254,6 +269,12 @@ async def run_regressions(
                 new_status=new_status,
             )
 
+        # Surface unstable/regressed transitions so the worker can decide
+        # whether to enqueue a 2nd-attempt patch (see auto-retry branch in
+        # harness_worker.process_unstable_retries).
+        if outcome in (RegressionOutcome.UNSTABLE, RegressionOutcome.REGRESSED):
+            flagged.append(FlaggedVulnerability(vulnerability_id=vuln.id, outcome=outcome))
+
         log_event(
             "harness_replay_finished",
             vulnerability_id=str(vuln.id),
@@ -314,6 +335,7 @@ async def run_regressions(
         happy_path_passed=hp_passed,
         happy_path_failed=hp_failed,
         over_fit_patch_count=over_fit_patches,
+        flagged_for_retry=tuple(flagged),
     )
 
 

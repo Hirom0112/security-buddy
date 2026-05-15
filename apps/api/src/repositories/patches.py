@@ -21,7 +21,10 @@ if TYPE_CHECKING:
 
     from sqlalchemy.ext.asyncio import AsyncSession
 
-_PATCH_COLS = "id, vulnerability_id, branch_name, pr_url, status, created_at, merged_at, version_id"
+_PATCH_COLS = (
+    "id, vulnerability_id, branch_name, pr_url, status,"
+    " created_at, merged_at, version_id, attempt_number"
+)
 
 
 class PatchRepository:
@@ -70,33 +73,61 @@ class PatchRepository:
         vulnerability_id: UUID,
         branch_name: str,
         pr_url: str,
+        attempt_number: int = 1,
     ) -> Patch:
         """Insert a patches row with status='awaiting_human_review'.
 
-        Returns the existing active patch (awaiting_human_review or merged)
-        if one already exists for the vulnerability — first-writer-wins.
+        Returns the existing active patch at the same attempt_number if one
+        already exists for the vulnerability — first-writer-wins on the
+        (vulnerability_id, attempt_number) partial unique index.
         """
-        existing = await self.get_by_vulnerability_id(session, vulnerability_id)
+        existing = await self.get_by_vulnerability_id_and_attempt(
+            session, vulnerability_id, attempt_number
+        )
         if existing is not None:
             return existing
 
         result = await session.execute(
             sa.text(
                 "INSERT INTO patches"  # noqa: S608
-                " (vulnerability_id, branch_name, pr_url, status)"
-                " VALUES (:vid, :branch, :pr_url, 'awaiting_human_review')"
+                " (vulnerability_id, branch_name, pr_url, status, attempt_number)"
+                " VALUES (:vid, :branch, :pr_url, 'awaiting_human_review', :att)"
                 f" RETURNING {_PATCH_COLS}"
             ),
             {
                 "vid": str(vulnerability_id),
                 "branch": branch_name,
                 "pr_url": pr_url,
+                "att": attempt_number,
             },
         )
         row = result.mappings().first()
         if row is None:
             raise RuntimeError("patches INSERT returned no row")
         return Patch.model_validate(dict(row))
+
+    async def get_by_vulnerability_id_and_attempt(
+        self,
+        session: AsyncSession,
+        vulnerability_id: UUID,
+        attempt_number: int,
+    ) -> Patch | None:
+        """Return the patch row for (vulnerability_id, attempt_number) if any.
+
+        Used by run_propose's idempotency check when retrying on
+        attempt #2 — the per-attempt unique index protects against duplicate
+        inserts even if the arq dedup misses.
+        """
+        result = await session.execute(
+            sa.text(
+                f"SELECT {_PATCH_COLS} FROM patches"  # noqa: S608
+                " WHERE vulnerability_id = :vid AND attempt_number = :att"
+                " ORDER BY created_at DESC LIMIT 1"
+            ),
+            {"vid": str(vulnerability_id), "att": attempt_number},
+        )
+        row = result.mappings().first()
+        return Patch.model_validate(dict(row)) if row else None
 
     async def update_status(
         self,

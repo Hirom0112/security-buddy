@@ -18,6 +18,11 @@ class PatchStatus(StrEnum):
     REJECTED = "rejected"
     CI_FAILED = "ci_failed"
     BLOCKS_LEGIT_FEATURES = "blocks_legit_features"
+    # Auto-retry on unstable regression: when attempt #1 lands unstable/
+    # regressed and we open attempt #2, the prior patch is flipped to
+    # SUPERSEDED so the (vulnerability_id, attempt_number) partial unique
+    # index still admits both rows. See migration 0012.
+    SUPERSEDED = "superseded"
 
 
 class Patch(BaseModel):
@@ -33,3 +38,4 @@ class Patch(BaseModel):
     created_at: datetime
     merged_at: datetime | None
     version_id: int
+    attempt_number: int = 1
