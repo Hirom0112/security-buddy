@@ -599,6 +599,18 @@ material ready.
 
 ---
 
+## Durable Evidence
+
+**LangSmith trace project (all live runs):**
+https://smith.langchain.com/o/10d059a6-56ff-46bc-b6a5-6d553b6bed67/projects/p/69f62167-2d7d-4f6f-81db-f631f8fd8c94
+
+Every Orchestrator / Judge / Documentation / Patch / Red Team LLM call is
+tagged with `agent`, `request_id`, and `campaign_id` and surfaces here as a
+per-campaign trace tree. Use this URL to verify any Slice's "LangSmith
+shows X" DoD checkbox.
+
+---
+
 ## Tracking Slice Progress
 
 Each slice has a corresponding GitHub issue. Each merged PR references its
