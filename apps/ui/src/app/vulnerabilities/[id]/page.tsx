@@ -9,10 +9,8 @@ import {
   listPatchesForVulnerability,
 } from "@/lib/db/queries";
 import styles from "@/app/dashboard.module.css";
-import {
-  confirmVulnerability,
-  dismissVulnerability,
-} from "./actions";
+import { confirmVulnerability } from "./actions";
+import { DismissForm } from "./dismiss-form";
 
 export const dynamic = "force-dynamic";
 
@@ -100,15 +98,48 @@ export default async function VulnerabilityDetailPage({ params }: PageProps) {
                   Confirm finding
                 </button>
               </form>
-              <form action={dismissVulnerability}>
-                <input type="hidden" name="id" value={vuln.id} />
-                <button
-                  type="submit"
-                  className={`${styles.btn} ${styles.btnDanger} ${styles.btnLg}`}
-                >
-                  Dismiss
-                </button>
-              </form>
+              <DismissForm vulnerabilityId={vuln.id} />
+            </div>
+          </div>
+        )}
+
+        {vuln.notes && vuln.notes.length > 0 && (
+          <div className={styles.panel}>
+            <div className={styles.panelHeader}>
+              <div className={styles.panelHeaderLeft}>
+                <div className={styles.panelTitle}>
+                  Operator audit trail
+                  <span className={styles.panelCount}>
+                    ({vuln.notes.length})
+                  </span>
+                </div>
+                <div className={styles.panelSubtitle}>
+                  Durable record of operator actions on this finding.
+                </div>
+              </div>
+            </div>
+            <div className={styles.panelBody}>
+              <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                {vuln.notes.map((n, i) => (
+                  <li
+                    key={`${n.at}-${i}`}
+                    className={styles.reviewItem}
+                  >
+                    <div>
+                      <div className={styles.reviewItemHead}>
+                        <span style={{ textTransform: "uppercase" }}>
+                          {n.action}
+                        </span>
+                        <span className={styles.dataMuted}>
+                          {n.actor} &middot;{" "}
+                          {new Date(n.at).toLocaleString()}
+                        </span>
+                      </div>
+                      <p className={styles.proseBody}>{n.reason}</p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
             </div>
           </div>
         )}

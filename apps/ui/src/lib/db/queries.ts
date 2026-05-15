@@ -193,7 +193,12 @@ export async function listVulnerabilities(
       owasp_llm_id,
       mitre_atlas_technique_id,
       hipaa_safeguard,
-      created_at
+      created_at,
+      EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements(notes) AS n
+        WHERE n->>'action' = 'dismiss'
+      ) AS is_dismissed
     FROM vulnerabilities
     ORDER BY
       CASE severity
@@ -229,6 +234,7 @@ export async function getVulnerability(
       expected_behavior,
       recommended_remediation,
       framework_versions,
+      notes,
       created_at
     FROM vulnerabilities
     WHERE id = ${id}::uuid

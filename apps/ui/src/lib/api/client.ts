@@ -156,12 +156,16 @@ export async function reviewPatch(
 
 export type VulnerabilityDecision = "confirm" | "dismiss";
 
+export type VulnerabilityDecisionPayload =
+  | { decision: "confirm" }
+  | { decision: "dismiss"; reason: string };
+
 export async function decideVulnerability(
   vulnerabilityId: string,
-  decision: VulnerabilityDecision
+  payload: VulnerabilityDecisionPayload
 ): Promise<void> {
   await apiFetch(`/api/v1/vulnerabilities/${vulnerabilityId}/decide`, {
     method: "POST",
-    jsonBody: { decision },
+    jsonBody: payload,
   });
 }

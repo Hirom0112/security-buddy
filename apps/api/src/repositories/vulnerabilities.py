@@ -34,7 +34,7 @@ _VULN_COLS = (
     " reproduction_steps, observed_behavior, expected_behavior,"
     " recommended_remediation, status, owasp_llm_id, mitre_atlas_technique_id,"
     " hipaa_safeguard, framework_versions, target_version_id, rubric_snapshot,"
-    " created_at, version_id"
+    " created_at, version_id, notes"
 )
 
 # A stable advisory lock key for the vuln_id sequence. Postgres advisory
@@ -59,7 +59,7 @@ class VulnerabilityRepository:
                 "  expected_behavior, recommended_remediation, status,"
                 "  owasp_llm_id, mitre_atlas_technique_id, hipaa_safeguard,"
                 "  framework_versions, target_version_id, rubric_snapshot,"
-                "  created_at, version_id"
+                "  created_at, version_id, notes"
                 " FROM vulnerabilities WHERE attack_id = :attack_id"
                 " ORDER BY created_at ASC LIMIT 1"
             ),
@@ -134,7 +134,7 @@ class VulnerabilityRepository:
                 "   recommended_remediation, status, owasp_llm_id,"
                 "   mitre_atlas_technique_id, hipaa_safeguard,"
                 "   framework_versions, target_version_id, rubric_snapshot,"
-                "   created_at, version_id"
+                "   created_at, version_id, notes"
             ),
             {
                 "vuln_id": vuln_id,
@@ -173,6 +173,47 @@ class VulnerabilityRepository:
                 f"SELECT {_VULN_COLS} FROM vulnerabilities WHERE id = :id"  # noqa: S608
             ),
             {"id": str(vulnerability_id)},
+        )
+        row = result.mappings().first()
+        return Vulnerability.model_validate(dict(row)) if row else None
+
+    async def append_note(
+        self,
+        session: AsyncSession,
+        *,
+        vulnerability_id: UUID,
+        note: dict[str, Any],
+        expected_version_id: int | None = None,
+    ) -> Vulnerability | None:
+        """Append a JSON entry to vulnerabilities.notes (audit trail).
+
+        Optimistic-locked: if expected_version_id is provided, the UPDATE
+        only fires when the row still carries that version. Returns None
+        when the row is missing or the version check fails — the route
+        translates that into a 409 Conflict.
+
+        The note is appended via jsonb `||` so concurrent appenders cannot
+        clobber each other's entries (we always read-then-rewrite when
+        using JSON parsing, vs. jsonb concat is server-side).
+        """
+        params: dict[str, Any] = {
+            "id": str(vulnerability_id),
+            "note": json.dumps(note),
+        }
+        where = "id = :id"
+        if expected_version_id is not None:
+            where += " AND version_id = :v"
+            params["v"] = expected_version_id
+
+        result = await session.execute(
+            sa.text(
+                "UPDATE vulnerabilities"  # noqa: S608
+                " SET notes = notes || CAST(:note AS jsonb),"
+                "     version_id = version_id + 1"
+                f" WHERE {where}"
+                f" RETURNING {_VULN_COLS}"
+            ),
+            params,
         )
         row = result.mappings().first()
         return Vulnerability.model_validate(dict(row)) if row else None

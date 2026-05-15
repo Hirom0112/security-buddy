@@ -103,6 +103,14 @@ export interface VulnerabilityRow {
   mitre_atlas_technique_id: string;
   hipaa_safeguard: string;
   created_at: string;
+  is_dismissed?: boolean;
+}
+
+export interface VulnerabilityNote {
+  at: string;
+  actor: string;
+  action: string;
+  reason: string;
 }
 
 export interface VulnerabilityDetail extends VulnerabilityRow {
@@ -112,6 +120,7 @@ export interface VulnerabilityDetail extends VulnerabilityRow {
   expected_behavior: string;
   recommended_remediation: string;
   framework_versions: Record<string, string>;
+  notes: VulnerabilityNote[];
 }
 
 // ---------------------------------------------------------------------------

@@ -7,7 +7,9 @@ POST /api/v1/vulnerabilities/{id}/decide        — confirm | dismiss
 The soft-gate workflow (CLAUDE.md §"Critical-severity soft gate"):
   - Documentation Agent writes critical findings with status='draft'.
   - Confirming → status='open', triggers the Patch Agent handoff.
-  - Dismissing → no-op acknowledgement (status unchanged) for now.
+  - Dismissing → status unchanged, but a durable audit entry is appended
+    to vulnerabilities.notes (operator timestamp + reason). Dismiss
+    requires a non-empty reason (>= 4 chars) so the trail is meaningful.
 """
 
 from __future__ import annotations
@@ -17,11 +19,12 @@ from __future__ import annotations
 # back FastAPI path params / DI dependencies. Do not move them into a
 # TYPE_CHECKING block (see commit db36f84).
 from collections.abc import AsyncGenerator  # noqa: TC003
+from datetime import UTC, datetime
 from typing import Annotated, Literal
 from uuid import UUID  # noqa: TC003
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker  # noqa: TC002
 
 from src.domain.vulnerability import Vulnerability, VulnerabilityStatus
@@ -53,6 +56,8 @@ async def _get_db_session(
 
 class VulnerabilityDecisionBody(BaseModel):
     decision: Literal["confirm", "dismiss"]
+    # Required when decision == "dismiss"; cross-field check enforced below.
+    reason: str | None = Field(default=None, max_length=2000)
 
 
 @router.get("/{vulnerability_id}", response_model=Vulnerability)
@@ -107,10 +112,37 @@ async def decide_vulnerability(
         )
         return updated
 
+    # decision == "dismiss"
+    reason = (body.reason or "").strip()
+    if len(reason) < 4:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="dismiss requires a non-empty reason (min 4 chars)",
+        )
+
+    note = {
+        "at": datetime.now(UTC).isoformat(),
+        "actor": "operator",
+        "action": "dismiss",
+        "reason": reason,
+    }
+    updated = await repo.append_note(
+        session,
+        vulnerability_id=vulnerability_id,
+        note=note,
+        expected_version_id=vuln.version_id,
+    )
+    if updated is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="vulnerability was modified concurrently; reload and retry",
+        )
+
     log_event(
         "vulnerability_dismissed",
         vulnerability_id=str(vulnerability_id),
-        status=vuln.status.value,
-        outcome="acknowledged",
+        status=updated.status.value,
+        reason_len=len(reason),
+        outcome="recorded",
     )
-    return vuln
+    return updated
