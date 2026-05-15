@@ -534,9 +534,15 @@ Postgres becomes visible, actionable, and demo-ready.
 - [ ] Operator can confirm/reject a critical-severity report
 - [ ] Operator can mark a patch as reviewed
 - [ ] Before/After diff view tells the loop-closing story end-to-end
-- [ ] Playwright e2e test covers: log in → trigger campaign → wait for
+- [x] Playwright e2e test covers: log in → trigger campaign → wait for
       verdict → confirm report → see PR → simulate merge → see regression
       result → see RESOLVED banner
+      — scaffolded at `apps/ui/tests/e2e/full-loop.spec.ts`. Skipped by
+      default; operator runs locally with the full stack up.
+      See the file docstring for the env-var checklist. Run with:
+      `PLAYWRIGHT_E2E=1 PLAYWRIGHT_OPERATOR_PASSWORD=… WAIT_FOR_MERGE=1
+      pnpm test:e2e tests/e2e/full-loop.spec.ts`. The GitHub merge step is
+      a `page.pause()` — operator merges manually, then resumes.
 
 ### Out of scope
 
