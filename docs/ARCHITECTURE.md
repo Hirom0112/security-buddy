@@ -104,11 +104,12 @@ platform sustainable at scale.
            ▼                  ▼
   ┌────────────────┐  ┌────────────────────┐
   │   RED TEAM     │  │ REGRESSION HARNESS │
-  │ (Llama 3.1 70B │  │  (deterministic)   │
-  │  via OpenRouter)│  │  • Replay N times │
-  │ • Seeds + muta-│  │  • Majority vote   │
-  │   tion strats  │  │  • Rubric stable   │
-  │ • Multi-turn   │  └─────────┬──────────┘
+  │ Llama 3.3 70B  │  │  (deterministic)   │
+  │  + determin-   │  │  • Replay N times  │
+  │  istic mutators│  │  • Majority vote   │
+  │ • Seeds + muta-│  │  • Rubric stable   │
+  │   tion strats  │  └─────────┬──────────┘
+  │ • Multi-turn   │            │
   └──────┬─────────┘            │
          │ HTTPS attacks         │ HTTPS replays
          ▼                       ▼
@@ -195,13 +196,15 @@ platform sustainable at scale.
 
 **Inputs (from Postgres):**
 
-- `attack_taxonomy` — the 13 subcategories with priority weights
+- `attack_taxonomy` — the 13 subcategories with priority weights[^taxonomy-count]
 - `attacks` joined to `verdicts` — coverage and success-rate per subcategory
 - `vulnerabilities WHERE status IN ('open','regressed')` — open findings
 - `regression_runs` — recent outcomes per target version
 - `agent_traces` — cost accumulated in the active campaign
 - `target_versions` — current target deployment state
 - `target_manifests` — declared capability surface of the target
+
+[^taxonomy-count]: 13 originally enumerated in THREAT_MODEL.md; 16 ultimately seeded — see `apps/api/alembic/versions/0003_seed_attack_taxonomy.py`.
 
 **Decision mechanism:**
 
@@ -886,7 +889,7 @@ graph.
 | Agent | Calls per campaign | Model | $/call est | Subtotal |
 |---|---|---|---|---|
 | Orchestrator | 2-5 | Claude Sonnet | $0.02 | $0.10 |
-| Red Team | 10-20 (variants) | Llama 70B via OpenRouter | $0.01 | $0.20 |
+| Red Team | 10-20 (variants) | Llama 3.3 70B via OpenRouter | $0.001-0.005 | $0.02-0.10 (now live, see Campaign #2: $0.43 / 11 exploits, 20 variants) |
 | Judge | 10-20 (one per attack) | Claude Sonnet | $0.03 | $0.60 |
 | Documentation | 0-3 (one per exploit) | Claude Sonnet | $0.05 | $0.15 |
 | Patch | 0-3 (one per high/crit) | Claude Sonnet | $0.10 | $0.30 |

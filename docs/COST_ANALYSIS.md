@@ -2,9 +2,11 @@
 
 **Author:** Hirom Alarcon
 **Week:** 3 — Gauntlet AI Austin Admission Track
-**Status:** Living document. Numbers reflect campaign
+**Status:** Living document. §2 numbers reflect campaign
 `60662d6c-5614-46f5-bf86-e4087a50df4a` (2026-05-12), the first live run after
 the OpenRouter $0 pricing bug was fixed in `apps/api/src/llm_client/pricing.py`.
+§3 and §5 also incorporate Campaign #2 (`ed26ea6b`, 2026-05-15) — the first
+run after the LLM Red Team Agent shipped (commit `0772009`).
 
 ---
 
@@ -45,7 +47,12 @@ emitted 13 vulnerability reports.
 | orchestrator   |     1 |       577 |        754 |  $0.0130 |
 | judge          |    17 |    40,229 |      4,512 |  $0.1884 |
 | documentation  |    26 |    51,802 |     35,449 |  $0.6871 |
-| **TOTAL**      |    44 |    92,608 |     40,715 |  **$0.8885** |
+| patch (VUL-0008, 2026-05-14) | 6 | 6,030 | 8,824 | $0.1505 |
+| **TOTAL**      |    50 |    98,638 |     49,539 |  **$1.0390** |
+
+Note: the Patch Agent makes ~2 Sonnet calls per vulnerability when patching
+succeeds first try (code-search + draft); failed drafts retry, which is what
+inflated VUL-0008 to 6 calls. See §3 / Patch.
 
 Unit economics:
 
@@ -92,8 +99,26 @@ templates, or skipping the revise pass when confidence is high.
 
 ### Red Team Agent
 
-Not yet billed — the actual Red Team Agent (Llama 70B) is unimplemented; its
-work currently runs through the Orchestrator on Sonnet. See §5.
+**Shipped 2026-05-14** (commit `0772009`). Variant generation now runs on
+`meta-llama/llama-3.3-70b-instruct` via OpenRouter as one strategy alongside
+three deterministic mutators (lexical, structural, multi_turn).
+
+First live run was Campaign #2
+(`ed26ea6b-71be-4c91-b7a4-75b0ac9a4476`, 2026-05-15): 20 attacks, 11 exploits,
+10 critical Documentation drafts (VUL-0014..VUL-0023), **$0.43 total** —
+roughly $0.001–$0.005 per variant on Llama. Exploit rate by strategy:
+
+| Strategy   | Exploits / Attacks |
+|------------|--------------------|
+| llm        | 5 / 5              |
+| lexical    | 5 / 10             |
+| structural | 1 / 5              |
+| multi_turn | 0 / 5              |
+
+The LLM strategy was both the cheapest *per* exploit and the highest yield
+per variant. The deterministic mutators are kept because they are free, fast,
+and produce a diverse seed corpus the LLM riffs off of. See §5 for what the
+shift off Orchestrator-side generation actually moved.
 
 ### Patch Agent
 
@@ -129,29 +154,30 @@ scale on this list and are not the dominant term.
 
 ---
 
-## 5. What the Red Team rebuild will add
+## 5. What the Red Team rebuild added
 
-`docs/TODO.md` flags the Red Team Agent rebuild: variant generation and
-adversarial mutation should move off Sonnet (running inside the Orchestrator
-today) onto a hybrid stack with `meta-llama/llama-3.3-70b-instruct` for the
-generation step. Rates in `apps/api/src/llm_client/pricing.py`:
+The Red Team Agent shipped 2026-05-14 (commit `0772009`). Variant generation
+moved off Sonnet (previously running inside the Orchestrator) onto a hybrid
+stack with `meta-llama/llama-3.3-70b-instruct` for the generation step plus
+three deterministic mutators. Rates from `apps/api/src/llm_client/pricing.py`:
 
 - Sonnet: $3.00 / $15.00 per MTok
 - Llama 3.3 70B Instruct: $0.23 / $0.40 per MTok — roughly **10–13× cheaper**
 
-The current Orchestrator's $0.0130 per run is mostly variant-generation work
-that will shift to Llama. At the same token shape, that drops to
-~$0.00044/run — a saving of about **$0.0126/run**, or ~1.4% of total
-campaign cost. The rebuild does **not** materially change the cost picture
-because Documentation, not generation, is the dominant term. Its real value is
-adversarial coverage (Llama lacks refusal training where Sonnet refuses
-offensive workflows) and freeing Sonnet for the agents that need its
-reasoning quality — the Judge and the Documentation Agent.
+Measured outcome from Campaign #2 (`ed26ea6b`, 2026-05-15): 20-attack campaign
+cost **$0.43** end-to-end with the LLM strategy alone generating 5/5 exploits
+at ~$0.001–$0.005 per variant. The cost picture is unchanged in shape:
+Documentation still dominates, and the hybrid Red Team only contributes a
+small slice of total spend. What the rebuild actually bought is **adversarial
+coverage** — Llama lacks the refusal training that made Sonnet decline
+offensive workflows partway through Campaign #1 — and **separation of
+concerns**, freeing Sonnet for the agents that need its reasoning quality
+(Judge and Documentation).
 
-If the Red Team also adds *new* mutation passes that don't exist today
-(multi-turn attack chains), those calls are net-new spend on Llama at
-~$0.0004/call — a 10-call mutation chain still costs less than a single
-Sonnet variant pass.
+The deterministic mutators (lexical, structural, multi_turn) are free at the
+LLM-cost layer. They produce the seed corpus the LLM strategy mutates from.
+A 10-call mutation chain on Llama still costs less than one Sonnet variant
+pass, so adding more mutation passes is not gated by cost.
 
 ---
 

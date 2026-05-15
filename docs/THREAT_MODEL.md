@@ -53,8 +53,13 @@ sensitive information disclosure (OWASP LLM02 / MITRE AML.T0024 + T0057),
 excessive agency in tool calls (OWASP LLM06), and others detailed below.
 
 This threat model identifies six top-level attack categories with thirteen
-subcategories. Of these, four subcategories are **critical priority** for
-the MVP coverage of Security Buddy:
+subcategories.[^seed-count] Of these, four subcategories are **critical
+priority** for the MVP coverage of Security Buddy:
+
+[^seed-count]: 13 originally enumerated here; 16 ultimately seeded into
+    `attack_taxonomy` per the Slice 0 DoD — see
+    `apps/api/alembic/versions/0003_seed_attack_taxonomy.py` for the
+    additional rows.
 
 1. **`prompt_injection/indirect_via_upload`** — *OWASP LLM01:2025 (Prompt
    Injection) / MITRE AML.T0051.001 (LLM Prompt Injection: Indirect)*.

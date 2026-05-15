@@ -134,6 +134,14 @@ opened PR #2 on `Hirom0112/openemr` (branch `security-buddy/vul-0008`,
 +480/−2,973 lines, new `PatientAccessControlService.php`), operator reviewed
 and merged, status now `proposed_fix`. Regression sweep pending.
 
+> **Note (2026-05-15 update):** A second live campaign
+> `ed26ea6b-71be-4c91-b7a4-75b0ac9a4476` ran after the LLM Red Team Agent
+> shipped (commit `0772009`) — 20 attacks, 11 exploits, 10 critical drafts
+> (VUL-0014..VUL-0023), $0.43 total. The three exported findings in
+> [`docs/findings/`](docs/findings/) (VUL-0017, VUL-0021, VUL-0023) come from
+> this later campaign. See [`docs/TODO.md`](docs/TODO.md) "Done 2026-05-14 —
+> LLM Red Team live runs" for the full run log.
+
 Eval baselines (recorded in [`docs/EVAL_BASELINES.md`](docs/EVAL_BASELINES.md)):
 
 | Component | Threshold | Result |
