@@ -107,6 +107,7 @@ All services live on Railway. Login required on the Security Buddy console
 - **Target — OpenEMR Clinical Co-Pilot (chart system):** https://clinical-copilot-openemr-production.up.railway.app
 - **Target — Agent-API (the AI surface being attacked):** https://copilot-agent-api-production.up.railway.app
 - **Target repo (Patch Agent PR destination):** [`Hirom0112/openemr`](https://github.com/Hirom0112/openemr)
+- **LangSmith trace project (all 5-agent traces, costs, timings):** [security-buddy](https://smith.langchain.com/o/10d059a6-56ff-46bc-b6a5-6d553b6bed67/projects/p/69f62167-2d7d-4f6f-81db-f631f8fd8c94)
   (GitHub PAT scoped to this fork only)
 
 ---
