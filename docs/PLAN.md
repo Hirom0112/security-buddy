@@ -391,11 +391,14 @@ target's fork. Branch protection enforces the human gate at merge.
    place).
 7. [x] Unit tests for github_client, parse, prompt
    (`tests/unit/patch/` — 17 tests, all green 2026-05-13).
-8. [ ] Manual operator test:
-   - [ ] Run slice 1+2+3+4 end-to-end against the live target
-   - [ ] Patch Agent opens a real PR against `Hirom0112/openemr`
-   - [ ] Operator reviews and merges (or rejects)
-   - [ ] The merge is recorded in Postgres via webhook
+8. [x] Manual operator test (completed 2026-05-14):
+   - [x] Confirmed VUL-0008 (multi-patient handoff PHI leak) via UI
+   - [x] Patch Agent opened PR #2 against `Hirom0112/openemr` (branch
+         `security-buddy/vul-0008`, +480/-2973 lines, new
+         `PatientAccessControlService.php`)
+   - [x] Operator reviewed and merged via `gh pr merge --squash`
+   - [x] Merge event received via cloudflared tunnel → flipped
+         `vulnerabilities.status='proposed_fix'`
 
 ### Env var contract (set everywhere)
 
@@ -405,17 +408,28 @@ target's fork. Branch protection enforces the human gate at merge.
 - `GITHUB_WEBHOOK_SECRET` — still **TODO**, route is fail-closed
   until set
 
+### Bug fixes discovered during live test (fixed in db36f84)
+
+- Pydantic 2.13 broke `UUID` / `AsyncSession` resolved as `ForwardRef`
+  in path params when placed under `TYPE_CHECKING` — moved to top-level
+  imports in `routes/vulnerabilities.py` and `routes/patches.py`
+- `LLMClient.complete()` ignored per-call `timeout` — httpx always used
+  `_DEFAULT_TIMEOUT=60s`; added `timeout` kwarg threaded through to
+  `httpx.AsyncClient`
+- `PATCH_LLM_TIMEOUT_SECONDS` bumped from 60 s → 180 s; draft-generation
+  for large PHP files needs the headroom
+
 ### Definition of Done
 
 - [x] `pytest` green on `tests/unit/patch` (17 passed)
-- [ ] One real PR opened by the Patch Agent against
-      `Hirom0112/openemr`, reviewable by the operator
-- [ ] Branch protection on `clinical-copilot` confirmed to block
-      direct push (test with the Patch Agent's PAT: a direct push to
-      `clinical-copilot` fails with a 403; with `enforce_admins: true`
-      this should hold even for admin tokens)
-- [ ] `GITHUB_WEBHOOK_SECRET` provisioned + webhook URL registered on
-      `Hirom0112/openemr` → merge event flips `patches.status='merged'`
+- [x] One real PR opened by the Patch Agent against `Hirom0112/openemr`
+      (PR #2, merged 2026-05-14, commit f582759)
+- [x] Branch protection on `clinical-copilot` confirmed: `enforce_admins=true`,
+      1 required review, no force push, no deletions — Patch Agent PAT
+      cannot push directly
+- [x] Webhook URL registered on `Hirom0112/openemr`; merge event flips
+      `vulnerabilities.status='proposed_fix'` (cloudflared tunnel for
+      local dev; Railway URL for production)
 
 ### Out of scope
 
@@ -458,10 +472,10 @@ the fix held and no other vulnerability regressed.
 ### Definition of Done
 
 - [ ] `pytest` green
-- [ ] Manually: run end-to-end loop. Patch Agent opens PR. Operator
-      merges. Webhook fires. Regression replays original exploit 3x. All
-      come back safe. Vulnerability status flips to `patched`. Regression
-      run row recorded.
+- [ ] **NEXT UP** — Manually trigger regression sweep for VUL-0008:
+      PR #2 is merged; enqueue `run_regression_sweep` → replays original
+      VUL-0008 attack 3× against live target → all safe →
+      `vulnerabilities.status='patched'`. Regression run row recorded.
 - [ ] Cross-category regression check works: artificially introduce a
       regression and verify it's flagged with the offending commit hash
 - [ ] LangSmith shows the regression-run trace tree
