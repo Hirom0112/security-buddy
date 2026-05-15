@@ -39,12 +39,11 @@ submission.
 | **User Doc** (personas, workflows, automation justification) | [`docs/USERS.md`](docs/USERS.md) |
 | **Architecture Doc** (~500 word summary + diagram + agents + regression harness + observability + tradeoffs) | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
 | **Target Manifest** (the target's contract — endpoints, auth, trust boundaries, expected safe behaviors; consumed by Red Team and Judge) | [`docs/TARGET_MANIFEST.md`](docs/TARGET_MANIFEST.md) |
-| **Demo Video** (3–5 min, live attacks against the target) | *[pending]* |
-| **Eval Dataset** (≥3 attack categories, reproducible) | [`apps/api/tests/evals/`](apps/api/tests/evals/) — ground-truth sets + runners. Baselines tracked in [`docs/EVAL_BASELINES.md`](docs/EVAL_BASELINES.md). |
-| **Vulnerability Reports** (≥3, professional format) | [`docs/findings/VUL-0017.md`](docs/findings/VUL-0017.md), [`docs/findings/VUL-0021.md`](docs/findings/VUL-0021.md), [`docs/findings/VUL-0023.md`](docs/findings/VUL-0023.md) — three CRITICAL findings, all with OWASP LLM 2025 / MITRE ATLAS 5.1.0 / HIPAA citations. |
+| **Demo Video** (3–5 min, live attacks against the target) | *Recorded by operator separately; link appears here on submission.* |
+| **Eval Dataset** (≥3 attack categories, reproducible) | [`evals/README.md`](evals/README.md) — orientation + reproducibility instructions. Three independent ground-truth sets (Judge 40 rows, Documentation 5 rows, Red Team 15 rows) live with the API at [`apps/api/tests/evals/`](apps/api/tests/evals/) so they ship with the agents they evaluate. Baselines tracked in [`docs/EVAL_BASELINES.md`](docs/EVAL_BASELINES.md). |
+| **Vulnerability Reports** (≥3, professional format) | [`docs/findings/`](docs/findings/) — see [`docs/findings/README.md`](docs/findings/README.md) for the current state. A fresh Wide Sweep with the calibrated pipeline (disclosure gate + pre-write replay + dedup) is running now; three diverse-OWASP-category findings will be exported here on completion. Every report carries OWASP LLM 2025, MITRE ATLAS 5.1.0, and HIPAA Security Rule citations. |
 | **AI Cost Analysis** (dev spend + projections at 100/1K/10K/100K runs) | [`docs/COST_ANALYSIS.md`](docs/COST_ANALYSIS.md) |
 | **Deployed Application** (publicly accessible target, platform running live tests) | URLs in [§ Deployed URLs](#deployed-urls) below. First live campaign results in [§ Live Demo Results](#live-demo-results-2026-05-12). |
-| **Social Post** (final submission only) | *(in progress — Slice 8)* |
 
 **Note on "Forked from OpenEMR".** The submission template assumes the platform
 lives inside the target's fork. This project is architected differently and
